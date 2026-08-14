@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChefHat, ShieldAlert, ClipboardList, Truck, Users, AlertTriangle } from "lucide-react";
+import { ChefHat, ShieldAlert, ClipboardList, Menu } from "lucide-react";
 
 import logo from "./assets/logo.png";
 import "./index.css";
@@ -15,6 +15,7 @@ import OwnerGate from "./components/OwnerGate";
 import ManagementPortal from "./components/ManagementPortal";
 import AssistantChat from "./components/AssistantChat";
 import IncidentReport from "./components/IncidentReport";
+import MenuSheet from "./components/MenuSheet";
 
 import {
   KITCHEN_MODULES,
@@ -43,6 +44,7 @@ export default function App() {
   const [showOrders, setShowOrders] = useState(false);
   const [showMgmt, setShowMgmt] = useState(false);
   const [showIncident, setShowIncident] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [ownerOk, setOwnerOk] = useState(() => sessionStorage.getItem("rc_owner") === "1");
 
   const allMods = tab === "kitchen" ? kitchenMods : tab === "safety" ? safetyMods : [];
@@ -68,21 +70,25 @@ export default function App() {
     setShowOrders(false);
     setShowMgmt(false);
     setShowIncident(false);
+    setMenuOpen(false);
   };
 
   const openMgmt = () => {
+    setMenuOpen(false);
     setShowOrders(false);
     setShowIncident(false);
     setShowMgmt(true);
   };
 
   const openOrders = () => {
+    setMenuOpen(false);
     setShowMgmt(false);
     setShowIncident(false);
     setShowOrders(true);
   };
 
   const openIncident = () => {
+    setMenuOpen(false);
     setShowOrders(false);
     setShowMgmt(false);
     setShowIncident(true);
@@ -106,38 +112,19 @@ export default function App() {
           <div className="rc-brand-name">Rooster &amp; Co</div>
           <div className="rc-brand-sub">Staff Training</div>
 
-          {/* Corner shortcuts → Incident + Management + Ordering */}
-          <div className="rc-corner-group">
-            <button
-              onClick={openIncident}
-              className="rc-corner-btn rc-corner-alert"
-              aria-label="Report an incident"
-              title="Report an incident"
-            >
-              <AlertTriangle size={18} />
-            </button>
-            <button
-              onClick={openMgmt}
-              className="rc-corner-btn"
-              aria-label="Management portal"
-              title="Management portal"
-            >
-              <Users size={18} />
-            </button>
-            <button
-              onClick={openOrders}
-              className="rc-corner-btn"
-              aria-label="Ordering portal"
-              title="Ordering portal"
-            >
-              <Truck size={18} />
-            </button>
-          </div>
+          <button
+            onClick={() => setMenuOpen(true)}
+            className="rc-corner-btn"
+            aria-label="Open menu"
+            title="Menu"
+          >
+            <Menu size={19} />
+          </button>
         </div>
 
         {/* INCIDENT REPORT — open to all staff, no login */}
         {showIncident && (
-          <IncidentReport onBack={() => setShowIncident(false)} ownerEmail={OWNER_EMAIL} />
+          <IncidentReport onBack={() => setShowIncident(false)} />
         )}
 
         {/* OWNER-ONLY PORTALS */}
@@ -266,6 +253,16 @@ export default function App() {
             onClose={() => setPlayingVideo(null)}
           />
         )}
+
+        {menuOpen && (
+          <MenuSheet
+            onClose={() => setMenuOpen(false)}
+            onIncident={openIncident}
+            onMgmt={openMgmt}
+            onOrders={openOrders}
+          />
+        )}
+
         {!hidden && <AssistantChat />}
       </div>
     </div>

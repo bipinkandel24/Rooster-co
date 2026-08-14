@@ -960,3 +960,64 @@ body {
 .rc-field-input:focus { border-color: #D9662C; }
 .rc-field-input::placeholder { color: #6A6357; }
 select.rc-field-input { appearance: none; cursor: pointer; }
+
+
+
+
+/* ---------- Menu sheet ---------- */
+.rc-menu-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 45;
+  display: flex;
+  align-items: flex-end;
+  animation: rc-fade-in 0.18s ease both;
+}
+@keyframes rc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.rc-menu-sheet {
+  width: 100%;
+  background: #1B1815;
+  border-top: 1px solid #322C24;
+  border-radius: 20px 20px 0 0;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  animation: rc-sheet-up 0.25s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes rc-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.rc-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 18px 12px;
+}
+.rc-menu-title {
+  font-family: "Fraunces", serif;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.rc-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 14px;
+}
+.rc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  background: #211D18;
+  border: 1px solid #322C24;
+  border-radius: 14px;
+  padding: 13px 14px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rc-menu-item:active { background: #26201A; }
