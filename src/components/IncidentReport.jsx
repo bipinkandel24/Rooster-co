@@ -20,7 +20,10 @@ const AREAS = [
   "Other",
 ];
 
-export default function IncidentReport({ onBack, ownerEmail }) {
+// Where incident reports get texted. Use full international format.
+const REPORT_PHONE = "+61400000000";
+
+export default function IncidentReport({ onBack }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     type: "",
@@ -42,40 +45,30 @@ export default function IncidentReport({ onBack, ownerEmail }) {
   const send = () => {
     const now = new Date();
     const stamp = now.toLocaleString("en-AU", {
-      weekday: "long",
       day: "numeric",
-      month: "long",
-      year: "numeric",
+      month: "short",
       hour: "numeric",
       minute: "2-digit",
     });
     const typeLabel = TYPES.find((t) => t.id === form.type)?.label || form.type;
 
-    const body = [
-      `INCIDENT / HAZARD REPORT`,
-      `Rooster & Co — 325A Doncaster Rd, Balwyn North`,
+    const text = [
+      `${isInjury ? "⚠️ INJURY" : "⚠️ " + typeLabel.toUpperCase()} — Rooster & Co`,
+      `${stamp} · ${form.area}`,
+      `By: ${form.name.trim()}`,
+      form.when.trim() ? `When: ${form.when.trim()}` : "",
       ``,
-      `Type: ${typeLabel}`,
-      `Reported by: ${form.name.trim()}`,
-      `Reported at: ${stamp}`,
-      `When it happened: ${form.when.trim() || "Not specified"}`,
-      `Location: ${form.area}`,
-      ``,
-      `WHAT HAPPENED`,
       form.what.trim(),
-      ``,
-      isInjury ? `WHO WAS INJURED\n${form.injured.trim() || "Not specified"}\n` : "",
-      isInjury ? `FIRST AID GIVEN\n${form.firstAid.trim() || "Not specified"}\n` : "",
-      `ACTION TAKEN SO FAR`,
-      form.action.trim() || "None yet",
-      ``,
-      `— Submitted from the Rooster & Co staff app`,
+      isInjury && form.injured.trim() ? `\nInjured: ${form.injured.trim()}` : "",
+      isInjury && form.firstAid.trim() ? `First aid: ${form.firstAid.trim()}` : "",
+      form.action.trim() ? `\nAction taken: ${form.action.trim()}` : "",
     ]
       .filter((l) => l !== "")
       .join("\n");
 
-    const subject = `${isInjury ? "INJURY" : typeLabel.toUpperCase()} report — ${now.toLocaleDateString("en-AU")}`;
-    window.location.href = `mailto:${ownerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const num = REPORT_PHONE.replace(/\s/g, "");
+    const sep = /iPhone|iPad|Mac/.test(navigator.userAgent) ? "&" : "?";
+    window.location.href = `sms:${num}${sep}body=${encodeURIComponent(text)}`;
     setSent(true);
   };
 
@@ -89,8 +82,8 @@ export default function IncidentReport({ onBack, ownerEmail }) {
           </div>
           <div className="rc-namegate-title">Report ready to send</div>
           <div className="rc-namegate-sub" style={{ maxWidth: 300 }}>
-            Press send in your mail app to submit it. If this is urgent, tell your
-            supervisor now — don't wait for the email.
+            Press send in your Messages app to submit it. If this is urgent, tell your
+            supervisor now — don't wait for the message.
           </div>
           <button onClick={onBack} className="rc-submit-btn rc-submit-active">
             Done
@@ -243,11 +236,11 @@ export default function IncidentReport({ onBack, ownerEmail }) {
         className={`rc-submit-btn ${canSubmit ? "rc-submit-active" : ""}`}
       >
         <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-        Submit report
+        Send report
       </button>
 
       <div className="rc-chat-disclaimer" style={{ marginTop: 12, marginBottom: 8 }}>
-        This opens an email to management. Tell your supervisor directly as well.
+        This opens a text message to management. Tell your supervisor directly as well.
       </div>
     </div>
   );
