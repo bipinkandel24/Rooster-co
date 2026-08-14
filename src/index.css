@@ -1091,3 +1091,66 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   cursor: pointer;
 }
 .rc-menu-item:active { background: #26201A; }
+
+
+
+
+.rc-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  background: none;
+  border: 1px solid #2C2620;
+  border-radius: 12px;
+  padding: 11px 13px;
+  margin-bottom: 14px;
+  color: #9C9284;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.rc-history-toggle span { flex: 1; text-align: left; }
+
+.rc-history-row { align-items: flex-start; }
+.rc-history-items {
+  font-size: 11.5px;
+  color: #7C7568;
+  line-height: 1.45;
+  margin-top: 6px;
+}
+
+.rc-history-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px;
+  color: #6A6357;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.rc-repeat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: #26201A;
+  border: 1px solid #4A3D2E;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  color: #E3A94A;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.rc-repeat-btn:active { background: #2E2620; }

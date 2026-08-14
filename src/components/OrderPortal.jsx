@@ -1,12 +1,15 @@
 import React, { useState } from "react";
-import { Truck, Minus, Plus, Send, CheckCircle2, AlertCircle, Wrench, ChevronRight, LogOut, MessageSquare } from "lucide-react";
+import { Truck, Minus, Plus, Send, CheckCircle2, AlertCircle, Wrench, ChevronRight, LogOut, MessageSquare, History, RotateCcw, Trash2 } from "lucide-react";
 import { SUPPLIERS, SERVICES, dueToday } from "../data/suppliers";
+import { loadHistory, saveOrder, lastOrderFor, clearHistory, fmtWhen } from "../data/orderHistory";
 
 export default function OrderPortal({ onBack, onLogout, ownerEmail }) {
   const [supplierId, setSupplierId] = useState(null);
   const [qty, setQty] = useState({});
   const [extra, setExtra] = useState("");
   const [sent, setSent] = useState(false);
+  const [history, setHistory] = useState(() => loadHistory());
+  const [showHistory, setShowHistory] = useState(false);
 
   const due = dueToday();
   const supplier = SUPPLIERS.find((s) => s.id === supplierId);
@@ -22,6 +25,11 @@ export default function OrderPortal({ onBack, onLogout, ownerEmail }) {
     setQty({});
     setExtra("");
     setSent(false);
+  };
+
+  const wipeHistory = () => {
+    clearHistory();
+    setHistory([]);
   };
 
   // ---------- Supplier list ----------
@@ -43,6 +51,39 @@ export default function OrderPortal({ onBack, onLogout, ownerEmail }) {
             <span>
               Due today: {due.map((id) => SUPPLIERS.find((s) => s.id === id)?.name).filter(Boolean).join(", ")}
             </span>
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <button onClick={() => setShowHistory((v) => !v)} className="rc-history-toggle">
+            <History size={15} color="#9C9284" />
+            <span>Recent orders ({history.length})</span>
+            <ChevronRight
+              size={16}
+              color="#7C7568"
+              style={{ transform: showHistory ? "rotate(90deg)" : "none", transition: "transform .15s" }}
+            />
+          </button>
+        )}
+
+        {showHistory && (
+          <div className="rc-stock-list">
+            {history.slice(0, 15).map((o) => (
+              <div key={o.id} className="rc-stock-row rc-history-row">
+                <div className="rc-stock-info">
+                  <div className="rc-stock-label">{o.supplierName}</div>
+                  <div className="rc-stock-unit">
+                    {fmtWhen(o.at)} · {o.items.length} item{o.items.length === 1 ? "" : "s"}
+                  </div>
+                  <div className="rc-history-items">
+                    {o.items.map((i) => `${i.qty} ${i.unit || "x"} ${i.name}`).join(" · ")}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button onClick={wipeHistory} className="rc-history-clear">
+              <Trash2 size={13} /> Clear history
+            </button>
           </div>
         )}
 
@@ -92,6 +133,16 @@ export default function OrderPortal({ onBack, onLogout, ownerEmail }) {
   const ordered = items.filter((i) => (qty[i.name] || 0) > 0);
   const canSend = ordered.length > 0 || extra.trim().length > 0;
   const isSms = supplier.sendVia === "sms";
+  const last = lastOrderFor(supplier.id);
+
+  const repeatLast = () => {
+    if (!last) return;
+    const next = {};
+    last.items.forEach((i) => { next[i.name] = i.qty; });
+    setQty(next);
+    setExtra(last.extra || "");
+    setSent(false);
+  };
 
   const send = () => {
     const now = new Date();
@@ -110,13 +161,22 @@ export default function OrderPortal({ onBack, onLogout, ownerEmail }) {
       .map((i) => `${qty[i.name]}${i.unit ? " " + i.unit : " x"} — ${i.name}`)
       .join("\n");
 
+    // Record this order in local history
+    const saved = saveOrder({
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      items: ordered.map((i) => ({ name: i.name, unit: i.unit || "", qty: qty[i.name] })),
+      extra,
+    });
+    if (saved) setHistory((h) => [saved, ...h]);
+
     if (isSms) {
       const text =
         (supplier.greeting ? `${supplier.greeting}\n` : "") +
-        `Rooster & Co order — Could you please deliver this list for tomorrow morning (${deliveryLong}):\n\n` +
+        `Rooster & Co order — for tomorrow (${deliveryLong}) please:\n\n` +
         (lines || "(no listed items)") +
         (extra.trim() ? `\n\n${extra.trim()}` : "") +
-        `\n\nThank you!`;
+        `\n\nThanks!`;
 
       const num = (supplier.phone || "").replace(/\s/g, "");
       // iOS uses &body=, Android uses ?body= — this form works on both
@@ -156,6 +216,13 @@ export default function OrderPortal({ onBack, onLogout, ownerEmail }) {
           </div>
         </div>
       </div>
+
+      {last && (
+        <button onClick={repeatLast} className="rc-repeat-btn">
+          <RotateCcw size={15} />
+          <span>Repeat last order ({fmtWhen(last.at)})</span>
+        </button>
+      )}
 
       {items.length > 0 ? (
         <div className="rc-stock-list">
