@@ -31,7 +31,7 @@ export default function MenuSheet({ onClose, onIncident, onMgmt, onOrders }) {
 
   return (
     <div className="rc-menu-overlay" onClick={onClose}>
-      <div className="rc-menu-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="rc-menu-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="rc-menu-header">
           <div className="rc-menu-title">Menu</div>
           <button onClick={onClose} className="rc-close-btn" aria-label="Close">
