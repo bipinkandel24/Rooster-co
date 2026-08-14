@@ -15,6 +15,7 @@ import OwnerGate from "./components/OwnerGate";
 import ManagementPortal from "./components/ManagementPortal";
 import AssistantChat from "./components/AssistantChat";
 import IncidentReport from "./components/IncidentReport";
+import TempLog from "./components/TempLog";
 import MenuSheet from "./components/MenuSheet";
 
 import {
@@ -44,6 +45,7 @@ export default function App() {
   const [showOrders, setShowOrders] = useState(false);
   const [showMgmt, setShowMgmt] = useState(false);
   const [showIncident, setShowIncident] = useState(false);
+  const [showTemps, setShowTemps] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ownerOk, setOwnerOk] = useState(() => sessionStorage.getItem("rc_owner") === "1");
 
@@ -52,7 +54,15 @@ export default function App() {
   const openMod = allMods.find((m) => m.id === openId);
 
   const ownerArea = showOrders || showMgmt;
-  const hidden = ownerArea || showIncident;
+  const hidden = ownerArea || showIncident || showTemps;
+
+  const closeAll = () => {
+    setMenuOpen(false);
+    setShowOrders(false);
+    setShowMgmt(false);
+    setShowIncident(false);
+    setShowTemps(false);
+  };
 
   const toggleItem = (modId, idx) => {
     setMods((prev) =>
@@ -67,31 +77,27 @@ export default function App() {
   const goTab = (t) => {
     setTab(t);
     setOpenId(null);
-    setShowOrders(false);
-    setShowMgmt(false);
-    setShowIncident(false);
-    setMenuOpen(false);
+    closeAll();
   };
 
   const openMgmt = () => {
-    setMenuOpen(false);
-    setShowOrders(false);
-    setShowIncident(false);
+    closeAll();
     setShowMgmt(true);
   };
 
   const openOrders = () => {
-    setMenuOpen(false);
-    setShowMgmt(false);
-    setShowIncident(false);
+    closeAll();
     setShowOrders(true);
   };
 
   const openIncident = () => {
-    setMenuOpen(false);
-    setShowOrders(false);
-    setShowMgmt(false);
+    closeAll();
     setShowIncident(true);
+  };
+
+  const openTemps = () => {
+    closeAll();
+    setShowTemps(true);
   };
 
   const ownerLogout = () => {
@@ -123,9 +129,10 @@ export default function App() {
         </div>
 
         {/* INCIDENT REPORT — open to all staff, no login */}
-        {showIncident && (
-          <IncidentReport onBack={() => setShowIncident(false)} />
-        )}
+        {showIncident && <IncidentReport onBack={() => setShowIncident(false)} />}
+
+        {/* TEMPERATURE LOG — open to all staff, no login */}
+        {showTemps && <TempLog onBack={() => setShowTemps(false)} />}
 
         {/* OWNER-ONLY PORTALS */}
         {ownerArea && !ownerOk && (
@@ -258,6 +265,7 @@ export default function App() {
           <MenuSheet
             onClose={() => setMenuOpen(false)}
             onIncident={openIncident}
+            onTemps={openTemps}
             onMgmt={openMgmt}
             onOrders={openOrders}
           />

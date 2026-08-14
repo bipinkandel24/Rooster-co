@@ -1154,3 +1154,23 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   cursor: pointer;
 }
 .rc-repeat-btn:active { background: #2E2620; }
+
+
+.rc-temp-input {
+  width: 74px;
+  flex-shrink: 0;
+  background: #14120F;
+  border: 1px solid #322C24;
+  border-radius: 10px;
+  padding: 10px 8px;
+  color: #EFE7D8;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: center;
+  outline: none;
+}
+.rc-temp-input:focus { border-color: #D9662C; }
+.rc-temp-ok { border-color: #4A5D3A; }
+.rc-temp-bad { border-color: #7A3A2E; background: #241A17; }
+.rc-temp-flag { color: #E08A6A; }

@@ -1,7 +1,8 @@
 import React from "react";
+import Thermometer from "../assets/thermometer.svg";
 import { X, AlertTriangle, Users, Truck, ChevronRight } from "lucide-react";
 
-export default function MenuSheet({ onClose, onIncident, onMgmt, onOrders }) {
+export default function MenuSheet({ onClose, onTemps, onIncident, onMgmt, onOrders }) {
   const ITEMS = [
     {
       id: "incident",
@@ -10,6 +11,14 @@ export default function MenuSheet({ onClose, onIncident, onMgmt, onOrders }) {
       Icon: AlertTriangle,
       color: "#C0392B",
       onClick: onIncident,
+    },
+      {
+      id: "temps",
+      label: "Temperature Log",
+      sub: "Daily fridge and coolroom check",
+      Icon: Thermometer,
+      color: "#6E8A8A",
+      onClick: onTemps,
     },
     {
       id: "orders",
