@@ -1,5 +1,5 @@
 import {
-  Flame, ShieldAlert, UtensilsCrossed, Wheat, Salad, Layers,
+  Flame, ShieldAlert, Sparkles, UtensilsCrossed, Wheat, Salad, Layers,
   PackagePlus, Drumstick, Droplet, Droplets, Users, LifeBuoy,
   List,
 } from "lucide-react";
@@ -65,7 +65,7 @@ export const KITCHEN_MODULES = [
     ]
   },
   {
-  id: "chickensalt", title: "Chicken Salt", icon: Droplets, color: "#b46f52", items: [
+  id: "chickensalt", title: "Chicken Salt", icon: Sparkles, color: "#b46f52", items: [
   { label: "Mixing chicken salt", duration: "2:00", done: false },
   ]
   },
@@ -200,6 +200,7 @@ export const YOUTUBE_VIDEOS = {
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
   ],
+  chickensalt: ["https://www.youtube.com/watch?v=YOUR_VIDEO_ID"],
   tzatziki: ["https://www.youtube.com/watch?v=YOUR_VIDEO_ID"],
   hygiene: ["https://www.youtube.com/watch?v=RUeVNCEDbCo"],
   conduct: ["https://www.youtube.com/watch?v=wdlbNahE8s8&t=30s"],
