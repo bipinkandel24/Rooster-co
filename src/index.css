@@ -921,3 +921,42 @@ body {
   text-align: center;
   margin-top: 9px;
 }
+
+
+.rc-corner-alert { color: #C0392B; }
+
+.rc-urgent-note {
+  background: #2E1A17;
+  border: 1px solid #5A2A22;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #E0B0A5;
+  margin-bottom: 20px;
+}
+
+.rc-field { margin-bottom: 16px; }
+.rc-field-label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: #9C9284;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+.rc-field-input {
+  width: 100%;
+  background: #211D18;
+  border: 1px solid #322C24;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #EFE7D8;
+  font-size: 14.5px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+}
+.rc-field-input:focus { border-color: #D9662C; }
+.rc-field-input::placeholder { color: #6A6357; }
+select.rc-field-input { appearance: none; cursor: pointer; }

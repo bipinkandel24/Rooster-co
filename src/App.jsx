@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChefHat, ShieldAlert, ClipboardList, Truck, Users } from "lucide-react";
+import { ChefHat, ShieldAlert, ClipboardList, Truck, Users, AlertTriangle } from "lucide-react";
 
 import logo from "./assets/logo.png";
 import "./index.css";
@@ -14,6 +14,7 @@ import OrderPortal from "./components/OrderPortal";
 import OwnerGate from "./components/OwnerGate";
 import ManagementPortal from "./components/ManagementPortal";
 import AssistantChat from "./components/AssistantChat";
+import IncidentReport from "./components/IncidentReport";
 
 import {
   KITCHEN_MODULES,
@@ -41,13 +42,15 @@ export default function App() {
   const [cleaningStaffName, setCleaningStaffName] = useState(null);
   const [showOrders, setShowOrders] = useState(false);
   const [showMgmt, setShowMgmt] = useState(false);
+  const [showIncident, setShowIncident] = useState(false);
   const [ownerOk, setOwnerOk] = useState(() => sessionStorage.getItem("rc_owner") === "1");
 
   const allMods = tab === "kitchen" ? kitchenMods : tab === "safety" ? safetyMods : [];
   const setMods = tab === "kitchen" ? setKitchenMods : setSafetyMods;
   const openMod = allMods.find((m) => m.id === openId);
 
-  const hidden = showOrders || showMgmt;
+  const ownerArea = showOrders || showMgmt;
+  const hidden = ownerArea || showIncident;
 
   const toggleItem = (modId, idx) => {
     setMods((prev) =>
@@ -64,16 +67,25 @@ export default function App() {
     setOpenId(null);
     setShowOrders(false);
     setShowMgmt(false);
+    setShowIncident(false);
   };
 
   const openMgmt = () => {
     setShowOrders(false);
+    setShowIncident(false);
     setShowMgmt(true);
   };
 
   const openOrders = () => {
     setShowMgmt(false);
+    setShowIncident(false);
     setShowOrders(true);
+  };
+
+  const openIncident = () => {
+    setShowOrders(false);
+    setShowMgmt(false);
+    setShowIncident(true);
   };
 
   const ownerLogout = () => {
@@ -94,8 +106,16 @@ export default function App() {
           <div className="rc-brand-name">Rooster &amp; Co</div>
           <div className="rc-brand-sub">Staff Training</div>
 
-          {/* Corner shortcuts → Management + Ordering portals */}
+          {/* Corner shortcuts → Incident + Management + Ordering */}
           <div className="rc-corner-group">
+            <button
+              onClick={openIncident}
+              className="rc-corner-btn rc-corner-alert"
+              aria-label="Report an incident"
+              title="Report an incident"
+            >
+              <AlertTriangle size={18} />
+            </button>
             <button
               onClick={openMgmt}
               className="rc-corner-btn"
@@ -115,15 +135,20 @@ export default function App() {
           </div>
         </div>
 
+        {/* INCIDENT REPORT — open to all staff, no login */}
+        {showIncident && (
+          <IncidentReport onBack={() => setShowIncident(false)} ownerEmail={OWNER_EMAIL} />
+        )}
+
         {/* OWNER-ONLY PORTALS */}
-        {hidden && !ownerOk && (
+        {ownerArea && !ownerOk && (
           <OwnerGate
             ownerEmail={OWNER_EMAIL}
             onUnlock={() => setOwnerOk(true)}
             title={showMgmt ? "Management Portal" : "Ordering Portal"}
           />
         )}
-        {hidden && ownerOk && (
+        {ownerArea && ownerOk && (
           showMgmt ? (
             <ManagementPortal onBack={() => setShowMgmt(false)} onLogout={ownerLogout} />
           ) : (
