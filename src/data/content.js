@@ -64,6 +64,11 @@ export const KITCHEN_MODULES = [
       { label: "Making tzatziki sauce", duration: "2:00", done: false },
     ]
   },
+  {
+  id: "chickensalt", title: "Chicken Salt", icon: Droplets, color: "#b46f52", items: [
+  { label: "Mixing chicken salt", duration: "2:00", done: false },
+  ]
+  },
 ];
 
 export const SAFETY_MODULES = [
