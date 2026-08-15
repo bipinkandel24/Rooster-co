@@ -1,15 +1,6 @@
 import React, { useState } from "react";
 import { Lock, Mail, KeyRound } from "lucide-react";
 
-// ---- MODE SWITCH ---------------------------------------------------------
-// false = passcode only (works right now, no backend needed)
-// true  = real email OTP (requires the /api functions deployed on Vercel)
-const USE_EMAIL_OTP = true;
-
-// Used only when USE_EMAIL_OTP is false. Change this to whatever you want.
-const FALLBACK_PASSCODE = "2468";
-// -------------------------------------------------------------------------
-
 export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Portal" }) {
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
@@ -21,10 +12,6 @@ export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Port
     setErr("");
     if (email.trim().toLowerCase() !== ownerEmail.toLowerCase()) {
       setErr("That email isn't authorised.");
-      return;
-    }
-    if (!USE_EMAIL_OTP) {
-      setStep("code");
       return;
     }
     setBusy(true);
@@ -52,15 +39,6 @@ export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Port
 
   const submitCode = async () => {
     setErr("");
-    if (!USE_EMAIL_OTP) {
-      if (code.trim() === FALLBACK_PASSCODE) {
-        sessionStorage.setItem("rc_owner", "1");
-        onUnlock();
-      } else {
-        setErr("Wrong code.");
-      }
-      return;
-    }
     setBusy(true);
     try {
       const r = await fetch("/api/verify-otp", {
@@ -71,7 +49,6 @@ export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Port
       });
       const d = await r.json().catch(() => ({}));
       if (d.ok) {
-        sessionStorage.setItem("rc_owner", "1");
         onUnlock();
         return;
       }
@@ -104,9 +81,7 @@ export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Port
         <div className="rc-namegate-sub">
           {step === "email"
             ? "Owner access only. Enter your email."
-            : USE_EMAIL_OTP
-            ? `Enter the 6-digit code sent to ${email}`
-            : "Enter your access code."}
+            : `Enter the 6-digit code sent to ${email}`}
         </div>
 
         {step === "email" ? (

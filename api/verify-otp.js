@@ -7,6 +7,12 @@ import {
   readCookie,
   verifyCode,
 } from "./_lib/otp.js";
+import {
+  SESSION_TTL_MS,
+  appendCookie,
+  makeSession,
+  sessionConfigured,
+} from "./_lib/session.js";
 
 // Each issued code gets its own small budget of guesses. The counter is keyed
 // on the token's signature, so replaying or editing the cookie can't reset it:
@@ -22,8 +28,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  if (!otpConfigured()) {
-    console.error("verify-otp misconfigured: OTP_SECRET must be set (>=16 chars)");
+  if (!otpConfigured() || !sessionConfigured()) {
+    console.error(
+      "verify-otp misconfigured: OTP_SECRET (>=16 chars) and OWNER_EMAIL must be set"
+    );
     return res.status(500).json({ ok: false, error: "Login is unavailable right now." });
   }
 
@@ -76,6 +84,13 @@ export default async function handler(req, res) {
   clearOtpCookie(res);
   await rateLimitReset(tokenKey);
   await rateLimitReset(`verify:ip:${ip}`);
+
+  // Issue the real credential. Owner-only data is served against this cookie,
+  // not against a flag the client sets for itself.
+  appendCookie(
+    res,
+    `rc_session=${makeSession(email)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}`
+  );
 
   return res.status(200).json({ ok: true });
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ChefHat, ShieldAlert, ClipboardList, Menu, Sun, Moon } from "lucide-react";
 
 import logo from "./assets/logo.png";
@@ -47,7 +47,9 @@ export default function App() {
   const [showIncident, setShowIncident] = useState(false);
   const [showTemps, setShowTemps] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [ownerOk, setOwnerOk] = useState(() => sessionStorage.getItem("rc_owner") === "1");
+  // Owner status is whatever the server says about the session cookie — the
+  // client can't grant it to itself. null = still checking.
+  const [ownerOk, setOwnerOk] = useState(null);
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem("rc_theme") || "dark";
@@ -55,6 +57,22 @@ export default function App() {
       return "dark";
     }
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/session", { credentials: "same-origin" });
+        const d = await r.json();
+        if (!cancelled) setOwnerOk(Boolean(d.signedIn));
+      } catch {
+        if (!cancelled) setOwnerOk(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const allMods = tab === "kitchen" ? kitchenMods : tab === "safety" ? safetyMods : [];
   const setMods = tab === "kitchen" ? setKitchenMods : setSafetyMods;
@@ -117,12 +135,19 @@ export default function App() {
     setShowTemps(true);
   };
 
-  const ownerLogout = () => {
-    sessionStorage.removeItem("rc_owner");
+  const ownerLogout = useCallback(async () => {
+    try {
+      await fetch("/api/session", { method: "DELETE", credentials: "same-origin" });
+    } catch {
+      /* clearing local state below is still worth doing */
+    }
     setOwnerOk(false);
     setShowOrders(false);
     setShowMgmt(false);
-  };
+  }, []);
+
+  // Called when an owner-only request comes back 401 (session expired).
+  const sessionExpired = useCallback(() => setOwnerOk(false), []);
 
   return (
     <div className={`rc-shell ${theme === "light" ? "light" : ""}`}>
@@ -161,16 +186,27 @@ export default function App() {
         {showTemps && <TempLog onBack={() => setShowTemps(false)} />}
 
         {/* OWNER-ONLY PORTALS */}
-        {ownerArea && !ownerOk && (
+        {ownerArea && ownerOk === null && (
+          <div className="rc-scroll-area">
+            <div className="rc-namegate">
+              <div className="rc-namegate-sub">Checking your session…</div>
+            </div>
+          </div>
+        )}
+        {ownerArea && ownerOk === false && (
           <OwnerGate
             ownerEmail={OWNER_EMAIL}
             onUnlock={() => setOwnerOk(true)}
             title={showMgmt ? "Management Portal" : "Ordering Portal"}
           />
         )}
-        {ownerArea && ownerOk && (
+        {ownerArea && ownerOk === true && (
           showMgmt ? (
-            <ManagementPortal onBack={() => setShowMgmt(false)} onLogout={ownerLogout} />
+            <ManagementPortal
+              onBack={() => setShowMgmt(false)}
+              onLogout={ownerLogout}
+              onSessionExpired={sessionExpired}
+            />
           ) : (
             <OrderPortal
               onBack={() => setShowOrders(false)}

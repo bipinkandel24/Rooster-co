@@ -1,10 +1,41 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar } from "lucide-react";
-import { STAFF } from "../data/staff";
 
-export default function ManagementPortal({ onBack, onLogout }) {
+export default function ManagementPortal({ onBack, onLogout, onSessionExpired }) {
   const [staffId, setStaffId] = useState(null);
-  const person = STAFF.find((s) => s.id === staffId);
+  const [staff, setStaff] = useState([]);
+  const [loadState, setLoadState] = useState("loading"); // loading | ready | error
+
+  // Staff records live on the server and are fetched against the session
+  // cookie, so they never sit in the JS bundle for anyone to read.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const r = await fetch("/api/staff", { credentials: "same-origin" });
+        if (cancelled) return;
+
+        if (r.status === 401) {
+          onSessionExpired?.();
+          return;
+        }
+        if (!r.ok) throw new Error("staff request failed");
+
+        const d = await r.json();
+        setStaff(Array.isArray(d.staff) ? d.staff : []);
+        setLoadState("ready");
+      } catch {
+        if (!cancelled) setLoadState("error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onSessionExpired]);
+
+  const person = staff.find((s) => s.id === staffId);
 
   const fmtDate = (d) => {
     if (!d) return "—";
@@ -106,20 +137,35 @@ export default function ManagementPortal({ onBack, onLogout }) {
 
       <div className="rc-checklist-heading">
         Staff
-        <span className="rc-checklist-count">{STAFF.length}</span>
+        {loadState === "ready" && <span className="rc-checklist-count">{staff.length}</span>}
       </div>
-      <div className="rc-stock-list">
-        {STAFF.map((s) => (
-          <button key={s.id} onClick={() => setStaffId(s.id)} className="rc-supplier-row">
-            <div className="rc-avatar rc-avatar-sm">{s.name.charAt(0).toUpperCase()}</div>
-            <div className="rc-stock-info">
-              <div className="rc-stock-label">{s.name}</div>
-              <div className="rc-stock-unit">{s.role}</div>
-            </div>
-            <ChevronRight size={17} color="#7C7568" />
-          </button>
-        ))}
-      </div>
+
+      {loadState === "loading" && (
+        <div className="rc-stock-unit" style={{ padding: "8px 2px" }}>
+          Loading staff…
+        </div>
+      )}
+
+      {loadState === "error" && (
+        <div className="rc-urgent-note">
+          Couldn't load staff details. Check your connection and try again.
+        </div>
+      )}
+
+      {loadState === "ready" && (
+        <div className="rc-stock-list">
+          {staff.map((s) => (
+            <button key={s.id} onClick={() => setStaffId(s.id)} className="rc-supplier-row">
+              <div className="rc-avatar rc-avatar-sm">{s.name.charAt(0).toUpperCase()}</div>
+              <div className="rc-stock-info">
+                <div className="rc-stock-label">{s.name}</div>
+                <div className="rc-stock-unit">{s.role}</div>
+              </div>
+              <ChevronRight size={17} color="#7C7568" />
+            </button>
+          ))}
+        </div>
+      )}
 
       <button onClick={onLogout} className="rc-logout-btn">
         <LogOut size={15} />
