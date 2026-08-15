@@ -200,7 +200,7 @@ export const YOUTUBE_VIDEOS = {
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
   ],
-  chickensalt: ["https://www.youtube.com/watch?v=YOUR_VIDEO_ID"],
+  chickensalt: ["https://www.youtube.com/watch?v=TW-FqCTMpnE"],
   tzatziki: ["https://www.youtube.com/watch?v=YOUR_VIDEO_ID"],
   hygiene: ["https://www.youtube.com/watch?v=RUeVNCEDbCo"],
   conduct: ["https://www.youtube.com/watch?v=wdlbNahE8s8&t=30s"],
