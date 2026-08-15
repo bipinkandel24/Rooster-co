@@ -48,6 +48,13 @@ export default function App() {
   const [showTemps, setShowTemps] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ownerOk, setOwnerOk] = useState(() => sessionStorage.getItem("rc_owner") === "1");
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("rc_theme") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
 
   const allMods = tab === "kitchen" ? kitchenMods : tab === "safety" ? safetyMods : [];
   const setMods = tab === "kitchen" ? setKitchenMods : setSafetyMods;
@@ -55,6 +62,16 @@ export default function App() {
 
   const ownerArea = showOrders || showMgmt;
   const hidden = ownerArea || showIncident || showTemps;
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    try {
+      localStorage.setItem("rc_theme", next);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const closeAll = () => {
     setMenuOpen(false);
@@ -108,7 +125,7 @@ export default function App() {
   };
 
   return (
-    <div className="rc-shell">
+    <div className={`rc-shell ${theme === "light" ? "light" : ""}`}>
       <div className="rc-frame">
         {/* Brand header */}
         <div className="rc-brand">
@@ -209,7 +226,7 @@ export default function App() {
             <div className="rc-scroll-area">
               <div className="rc-signed-in-row">
                 <span>
-                  Signed in as <strong style={{ color: "#EFE7D8" }}>{cleaningStaffName}</strong>
+                  Signed in as <strong style={{ color: "var(--text)" }}>{cleaningStaffName}</strong>
                 </span>
                 <button onClick={() => setCleaningStaffName(null)} className="rc-switch-btn">
                   Not you?
@@ -268,6 +285,8 @@ export default function App() {
             onTemps={openTemps}
             onMgmt={openMgmt}
             onOrders={openOrders}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         )}
 

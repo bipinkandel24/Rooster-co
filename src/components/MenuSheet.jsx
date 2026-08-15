@@ -1,7 +1,7 @@
 import React from "react";
-import { X, AlertTriangle, Thermometer, Users, Truck, ChevronRight } from "lucide-react";
+import { X, AlertTriangle, Thermometer, Users, Truck, ChevronRight, Sun, Moon } from "lucide-react";
 
-export default function MenuSheet({ onClose, onIncident, onTemps, onMgmt, onOrders }) {
+export default function MenuSheet({ onClose, onIncident, onTemps, onMgmt, onOrders, theme, onToggleTheme }) {
   const ITEMS = [
     {
       id: "incident",
@@ -61,6 +61,10 @@ export default function MenuSheet({ onClose, onIncident, onTemps, onMgmt, onOrde
             </button>
           ))}
         </div>
+        <button onClick={onToggleTheme} className="rc-theme-row">
+            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            <span>{theme === "light" ? "Dark mode" : "Light mode"}</span>
+          </button>
       </div>
     </div>
   );
