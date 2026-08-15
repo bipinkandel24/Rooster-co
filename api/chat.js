@@ -1,6 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { clientIp, rateLimit, tooManyRequests } from "./_lib/rateLimit.js";
 
-const anthropic = new Anthropic({ apiKey: process.env.API_KEY });
+const API_KEY = process.env.API_KEY;
+
+// The assistant is deliberately open to all staff — no login mid-shift. That
+// makes rate limiting the only thing standing between the endpoint and an
+// unbounded bill on the Anthropic key, so the caps below are the security
+// control, not a nicety.
+//
+// Limits are per IP, and the whole shop shares one connection, so these are
+// sized for a busy kitchen (several staff on the same public IP) rather than
+// for one person. Tighten them if the shop's usage turns out lower.
+const PER_IP_BURST = { limit: 60, windowSec: 10 * 60 };
+const PER_IP_DAILY = { limit: 600, windowSec: 24 * 60 * 60 };
+
+const MAX_MESSAGES = 12;
+const MAX_MESSAGE_CHARS = 2000;
+const MAX_TOTAL_CHARS = 12000;
 
 const SYSTEM = `You are the Rooster & Co kitchen assistant, helping staff at a gluten-free charcoal chicken and souvlaki shop in Balwyn North, Melbourne.
 
@@ -18,35 +34,80 @@ Style: short, practical, plain English. Staff are often busy mid-shift. Two or t
 
 Politely decline anything unrelated to the kitchen, food, or the workplace.`;
 
+/** Accept only well-formed {role, content} pairs with string content. */
+function normalizeMessages(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  const trimmed = raw.slice(-MAX_MESSAGES);
+  const out = [];
+  let total = 0;
+
+  for (const m of trimmed) {
+    if (!m || typeof m.content !== "string") return null;
+
+    const content = m.content.trim().slice(0, MAX_MESSAGE_CHARS);
+    if (content === "") continue;
+
+    total += content.length;
+    if (total > MAX_TOTAL_CHARS) return null;
+
+    out.push({ role: m.role === "assistant" ? "assistant" : "user", content });
+  }
+
+  // The API requires the conversation to start with a user turn.
+  while (out.length > 0 && out[0].role === "assistant") out.shift();
+
+  return out.length > 0 ? out : null;
+}
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  if (!API_KEY) {
+    console.error("chat misconfigured: API_KEY is not set");
+    return res.status(500).json({ error: "Assistant unavailable" });
+  }
+
+  const ip = clientIp(req);
+  const burst = await rateLimit(`chat:burst:${ip}`, PER_IP_BURST.limit, PER_IP_BURST.windowSec);
+  if (!burst.allowed) {
+    return tooManyRequests(res, burst.retryAfter, "The assistant is busy. Try again shortly.");
+  }
+  const daily = await rateLimit(`chat:daily:${ip}`, PER_IP_DAILY.limit, PER_IP_DAILY.windowSec);
+  if (!daily.allowed) {
+    return tooManyRequests(res, daily.retryAfter, "Daily assistant limit reached.");
+  }
+
+  const messages = normalizeMessages(req.body?.messages);
+  if (!messages) {
+    return res.status(400).json({ error: "No messages" });
+  }
 
   try {
-    const { messages } = req.body || {};
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: "No messages" });
-    }
-
-    const trimmed = messages.slice(-12).map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: String(m.content).slice(0, 2000),
-    }));
-
-    const r = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
-      max_tokens: 700,
-      system: SYSTEM,
-      messages: trimmed,
-    });
+    const r = await new Anthropic({ apiKey: API_KEY }).messages.create(
+      {
+        model: "claude-sonnet-4-5",
+        max_tokens: 700,
+        system: SYSTEM,
+        messages,
+      },
+      { timeout: 30_000 }
+    );
 
     const text = r.content
       .filter((b) => b.type === "text")
       .map((b) => b.text)
       .join("\n");
 
-    res.json({ text });
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json({ text });
   } catch (e) {
+    // Log server-side; never return the provider error to the client, since it
+    // can carry request details and key metadata.
     console.error("chat error:", e);
-    res.status(500).json({ error: "Assistant unavailable" });
+    return res.status(502).json({ error: "Assistant unavailable" });
   }
 }
