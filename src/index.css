@@ -751,3 +751,32 @@ select.rc-field-input { appearance: none; cursor: pointer; }
 }
 .rc-chat-send:disabled { background: var(--border); color: var(--text-faint); cursor: not-allowed; }
 .rc-chat-disclaimer { font-size: 10.5px; color: var(--text-faint); text-align: center; margin-top: 9px; }
+
+.rc-temp-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.rc-sign-btn {
+  width: 34px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--border);
+  border: 1px solid transparent;
+  color: var(--text-2);
+  font-size: 19px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rc-sign-on {
+  background: var(--alert-bg);
+  border-color: var(--alert-border);
+  color: var(--danger-soft);
+}

@@ -11,9 +11,21 @@ export default function TempLog({ onBack }) {
   const [showLog, setShowLog] = useState(false);
 
   const doneToday = checkedToday();
-  const filled = UNITS.filter((u) => String(temps[u.id] ?? "").trim() !== "");
+  const filled = UNITS.filter((u) => {
+    const v = String(temps[u.id] ?? "").trim();
+    return v !== "" && v !== "-";
+  });
   const canSave = filled.length > 0 && staffName.trim() !== "";
   const outOfRange = filled.filter((u) => inRange(u, temps[u.id]) === false);
+
+  const toggleSign = (unitId) => {
+    setTemps((p) => {
+      const raw = String(p[unitId] ?? "").trim();
+      if (raw === "" || raw === "-") return { ...p, [unitId]: raw === "-" ? "" : "-" };
+      const flipped = raw.startsWith("-") ? raw.slice(1) : "-" + raw;
+      return { ...p, [unitId]: flipped };
+    });
+  };
 
   const save = () => {
     const readings = filled.map((u) => ({
@@ -50,11 +62,14 @@ export default function TempLog({ onBack }) {
     return (
       <div className="rc-scroll-area">
         <div className="rc-namegate">
-          <div className="rc-gate-icon" style={{ background: outOfRange.length ? "#5A2A2233" : "#4A5D3A33" }}>
+          <div
+            className="rc-gate-icon"
+            style={{ background: outOfRange.length ? "var(--alert-bg)" : "var(--ok-bg)" }}
+          >
             {outOfRange.length ? (
-              <AlertTriangle size={24} color="#E08A6A" />
+              <AlertTriangle size={24} color="var(--danger-soft)" />
             ) : (
-              <CheckCircle2 size={24} color="#A8C48A" />
+              <CheckCircle2 size={24} color="var(--ok-border)" />
             )}
           </div>
           <div className="rc-namegate-title">
@@ -81,8 +96,8 @@ export default function TempLog({ onBack }) {
       <button onClick={onBack} className="rc-back-btn">← Back</button>
 
       <div className="rc-detail-heading">
-        <div className="rc-module-icon" style={{ background: "#6E8A8A22" }}>
-          <Thermometer size={19} color="#6E8A8A" />
+        <div className="rc-module-icon" style={{ background: "var(--bg-card)" }}>
+          <Thermometer size={19} color="var(--teal)" />
         </div>
         <div>
           <h2 className="rc-detail-title">Temperature Log</h2>
@@ -94,7 +109,7 @@ export default function TempLog({ onBack }) {
 
       {!doneToday && (
         <div className="rc-due-banner">
-          <AlertTriangle size={15} color="#E3A94A" />
+          <AlertTriangle size={15} color="var(--gold)" />
           <span>Daily check not done yet. Record temps at the start of service.</span>
         </div>
       )}
@@ -104,6 +119,7 @@ export default function TempLog({ onBack }) {
         {UNITS.map((u) => {
           const val = temps[u.id] ?? "";
           const ok = inRange(u, val);
+          const isNeg = String(val).startsWith("-");
           return (
             <div
               key={u.id}
@@ -115,15 +131,35 @@ export default function TempLog({ onBack }) {
                   Target {u.min}°C to {u.max}°C
                 </div>
               </div>
-              <input
-                className="rc-temp-input"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                placeholder="—"
-                value={val}
-                onChange={(e) => setTemps((p) => ({ ...p, [u.id]: e.target.value }))}
-              />
+
+              <div className="rc-temp-controls">
+                <button
+                  onClick={() => toggleSign(u.id)}
+                  className={`rc-sign-btn ${isNeg ? "rc-sign-on" : ""}`}
+                  aria-label="Toggle minus"
+                  title="Minus"
+                >
+                  −
+                </button>
+                <input
+                  className="rc-temp-input"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="-?[0-9]*[.,]?[0-9]*"
+                  placeholder="—"
+                  value={val}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9.\-]/g, "");
+                    setTemps((p) => ({ ...p, [u.id]: v }));
+                  }}
+                  onFocus={() => {
+                    // Pre-fill the minus for freezer-type units
+                    if (u.max < 0 && String(temps[u.id] ?? "") === "") {
+                      setTemps((p) => ({ ...p, [u.id]: "-" }));
+                    }
+                  }}
+                />
+              </div>
             </div>
           );
         })}
@@ -168,8 +204,12 @@ export default function TempLog({ onBack }) {
 
       {log.length > 0 && (
         <>
-          <button onClick={() => setShowLog((v) => !v)} className="rc-history-toggle" style={{ marginTop: 20 }}>
-            <History size={15} color="#9C9284" />
+          <button
+            onClick={() => setShowLog((v) => !v)}
+            className="rc-history-toggle"
+            style={{ marginTop: 20 }}
+          >
+            <History size={15} color="var(--text-2)" />
             <span>Past checks ({log.length})</span>
           </button>
 
