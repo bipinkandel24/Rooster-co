@@ -780,3 +780,9 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   border-color: var(--alert-border);
   color: var(--danger-soft);
 }
+
+
+.rc-corner-left {
+  left: 14px;
+  right: auto;
+}

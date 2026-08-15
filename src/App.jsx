@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChefHat, ShieldAlert, ClipboardList, Menu } from "lucide-react";
+import { ChefHat, ShieldAlert, ClipboardList, Menu, Sun, Moon } from "lucide-react";
 
 import logo from "./assets/logo.png";
 import "./index.css";
@@ -129,6 +129,15 @@ export default function App() {
       <div className="rc-frame">
         {/* Brand header */}
         <div className="rc-brand">
+          <button
+            onClick={toggleTheme}
+            className="rc-corner-btn rc-corner-left"
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            title={theme === "light" ? "Dark mode" : "Light mode"}
+          >
+            {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
+
           <div className="rc-brand-badge">
             <img src={logo} alt="Rooster & Co logo" />
           </div>
@@ -285,8 +294,6 @@ export default function App() {
             onTemps={openTemps}
             onMgmt={openMgmt}
             onOrders={openOrders}
-            theme={theme}
-            onToggleTheme={toggleTheme}
           />
         )}
 
