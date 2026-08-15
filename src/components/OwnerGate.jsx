@@ -35,10 +35,16 @@ export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Port
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
-      if (!r.ok) throw new Error();
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // The server explains rate limits and misconfiguration — show that
+        // rather than a generic retry prompt the owner can't act on.
+        setErr(d.error || "Couldn't send the code. Try again.");
+        return;
+      }
       setStep("code");
     } catch {
-      setErr("Couldn't send the code. Try again.");
+      setErr("Couldn't send the code. Check your connection.");
     } finally {
       setBusy(false);
     }
@@ -63,15 +69,26 @@ export default function OwnerGate({ ownerEmail, onUnlock, title = "Ordering Port
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), code: code.trim() }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({}));
       if (d.ok) {
         sessionStorage.setItem("rc_owner", "1");
         onUnlock();
-      } else {
-        setErr("Wrong or expired code.");
+        return;
       }
+      if (r.status === 429) {
+        setErr(d.error || "Too many attempts. Request a new code.");
+        setStep("email");
+      } else if (d.reason === "expired") {
+        setErr("That code expired. Request a new one.");
+        setStep("email");
+      } else if (typeof d.attemptsLeft === "number" && d.attemptsLeft > 0) {
+        setErr(`Wrong code. ${d.attemptsLeft} attempt${d.attemptsLeft === 1 ? "" : "s"} left.`);
+      } else {
+        setErr("Wrong code.");
+      }
+      setCode("");
     } catch {
-      setErr("Couldn't verify. Try again.");
+      setErr("Couldn't verify. Check your connection.");
     } finally {
       setBusy(false);
     }
