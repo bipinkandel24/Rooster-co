@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <!-- No maximum-scale / user-scalable=no: those block pinch-zoom, which staff
+       need for small text on a phone in the kitchen. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
   <!-- PWA / Add to Home Screen -->
   <link rel="manifest" href="/manifest.json" />

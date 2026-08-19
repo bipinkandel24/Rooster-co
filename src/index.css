@@ -417,6 +417,8 @@ body {
   margin-bottom: 0 !important; padding-left: 0 !important; flex: 1;
 }
 .rc-gate-err { color: var(--danger-soft); font-size: 12.5px; margin-bottom: 12px; }
+.rc-gate-hint { color: var(--text-2); font-size: 12.5px; margin-bottom: 12px; }
+.rc-gate-hint-ok { color: var(--gold); }
 
 /* ================= ORDERING ================= */
 .rc-due-banner {
