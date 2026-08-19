@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { clientIp, rateLimit, tooManyRequests } from "./_lib/rateLimit.js";
 
 const API_KEY = process.env.API_KEY;
@@ -6,6 +6,10 @@ const API_KEY = process.env.API_KEY;
 // The assistant is deliberately open to all staff — no login mid-shift. Gemini's
 // free tier means abuse costs availability rather than money, but the caps below
 // are still what keeps the endpoint usable for actual staff.
+//
+// Limits are per IP, and the whole shop shares one connection, so these are
+// sized for a busy kitchen (several staff on the same public IP) rather than
+// for one person. Tighten them if the shop's usage turns out lower.
 const PER_IP_BURST = { limit: 60, windowSec: 10 * 60 };
 const PER_IP_DAILY = { limit: 600, windowSec: 24 * 60 * 60 };
 
@@ -90,21 +94,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+    const contents = toGeminiHistory(messages);
+
+    const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
-      systemInstruction: SYSTEM,
-      generationConfig: { maxOutputTokens: 700 },
+      contents,
+      config: {
+        systemInstruction: SYSTEM,
+        maxOutputTokens: 700,
+      },
     });
 
-    const history = toGeminiHistory(messages);
-    // The last turn is the new prompt; everything before it is prior context.
-    const latest = history.pop();
-
-    const chat = model.startChat({ history });
-    const result = await chat.sendMessage(latest.parts[0].text);
-
-    const text = result.response.text();
+    const text = response.text;
 
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({ text });
