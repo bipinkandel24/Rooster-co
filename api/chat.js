@@ -1,16 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { clientIp, rateLimit, tooManyRequests } from "./_lib/rateLimit.js";
 
 const API_KEY = process.env.API_KEY;
 
-// The assistant is deliberately open to all staff — no login mid-shift. That
-// makes rate limiting the only thing standing between the endpoint and an
-// unbounded bill on the Anthropic key, so the caps below are the security
-// control, not a nicety.
-//
-// Limits are per IP, and the whole shop shares one connection, so these are
-// sized for a busy kitchen (several staff on the same public IP) rather than
-// for one person. Tighten them if the shop's usage turns out lower.
+// The assistant is deliberately open to all staff — no login mid-shift. Gemini's
+// free tier means abuse costs availability rather than money, but the caps below
+// are still what keeps the endpoint usable for actual staff.
 const PER_IP_BURST = { limit: 60, windowSec: 10 * 60 };
 const PER_IP_DAILY = { limit: 600, windowSec: 24 * 60 * 60 };
 
@@ -60,6 +55,14 @@ function normalizeMessages(raw) {
   return out.length > 0 ? out : null;
 }
 
+/** Gemini uses {role: "user"|"model", parts: [{text}]} instead of {role, content}. */
+function toGeminiHistory(messages) {
+  return messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -87,20 +90,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const r = await new Anthropic({ apiKey: API_KEY }).messages.create(
-      {
-        model: "claude-sonnet-4-5",
-        max_tokens: 700,
-        system: SYSTEM,
-        messages,
-      },
-      { timeout: 30_000 }
-    );
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: SYSTEM,
+      generationConfig: { maxOutputTokens: 700 },
+    });
 
-    const text = r.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n");
+    const history = toGeminiHistory(messages);
+    // The last turn is the new prompt; everything before it is prior context.
+    const latest = history.pop();
+
+    const chat = model.startChat({ history });
+    const result = await chat.sendMessage(latest.parts[0].text);
+
+    const text = result.response.text();
 
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({ text });
