@@ -99,7 +99,7 @@ export default async function handler(req, res) {
     const contents = toGeminiHistory(messages);
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.6-flash",
       contents,
       config: {
         systemInstruction: SYSTEM,
