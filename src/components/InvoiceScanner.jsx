@@ -4,7 +4,8 @@ import {
   ChevronRight, FileText, X, Receipt,
 } from "lucide-react";
 import {
-  loadInvoices, saveInvoice, deleteInvoice, groupByWeek, weekLabel, money,
+  loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
+  groupByWeek, weekLabel, money,
 } from "../data/invoices";
 
 // Shrink a phone photo so it fits inside the serverless payload limit
@@ -42,8 +43,6 @@ export default function InvoiceScanner({ onBack }) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.detail || d.error || "Scan failed");
 
     setBusy(true);
     setErr("");
@@ -55,7 +54,7 @@ export default function InvoiceScanner({ onBack }) {
         body: JSON.stringify({ image, mediaType: "image/jpeg" }),
       });
       const d = await r.json();
-      if (!d.ok) throw new Error(d.error || "Scan failed");
+      if (!d.ok) throw new Error(d.detail || d.error || "Scan failed");
 
       setDraft({
         ...emptyDraft,
@@ -75,7 +74,7 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  const confirm = () => {
+  const saveDraft = () => {
     const entry = saveInvoice({
       ...draft,
       subtotal: draft.subtotal === "" ? null : Number(draft.subtotal),
@@ -87,6 +86,13 @@ export default function InvoiceScanner({ onBack }) {
   };
 
   const remove = (id) => setInvoices(deleteInvoice(id));
+
+  const wipeAll = () => {
+    if (window.confirm("Delete all saved invoices? Export first if you need them.")) {
+      clearInvoices();
+      setInvoices([]);
+    }
+  };
 
   const exportWeek = async (weekKey, rows) => {
     const XLSX = await import("xlsx");
@@ -215,7 +221,7 @@ export default function InvoiceScanner({ onBack }) {
           </>
         )}
 
-        <button onClick={confirm} className="rc-submit-btn rc-submit-active">
+        <button onClick={saveDraft} className="rc-submit-btn rc-submit-active">
           <CheckCircle2 size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
           Save invoice
         </button>
@@ -259,7 +265,7 @@ export default function InvoiceScanner({ onBack }) {
       </button>
 
       {err && (
-        <div className="rc-urgent-note" style={{ marginTop: 14 }}>
+        <div className="rc-urgent-note" style={{ marginTop: 14, wordBreak: "break-word" }}>
           {err}
         </div>
       )}
@@ -326,15 +332,7 @@ export default function InvoiceScanner({ onBack }) {
       )}
 
       {invoices.length > 0 && (
-        <button
-          onClick={() => {
-            if (confirm("Delete all saved invoices? Export first if you need them.")) {
-              clearInvoices();
-              setInvoices([]);
-            }
-          }}
-          className="rc-history-clear"
-        >
+        <button onClick={wipeAll} className="rc-history-clear">
           <Trash2 size={13} /> Clear all invoices
         </button>
       )}
