@@ -94,7 +94,8 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  const exportWeek = async (weekKey, rows) => {
+  // Shared export — takes any set of invoices and writes one workbook
+  const exportRows = async (rows, filename) => {
     const XLSX = await import("xlsx");
 
     const summary = rows.map((i) => ({
@@ -130,8 +131,14 @@ export default function InvoiceScanner({ onBack }) {
     if (items.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(items), "Line Items");
     }
-    XLSX.writeFile(wb, `rooster-invoices-week-${weekKey}.xlsx`);
+    XLSX.writeFile(wb, filename);
   };
+
+  const exportWeek = (weekKey, rows) =>
+    exportRows(rows, `rooster-invoices-week-${weekKey}.xlsx`);
+
+  const exportAll = () =>
+    exportRows(invoices, `rooster-invoices-all-${new Date().toISOString().slice(0, 10)}.xlsx`);
 
   // ---------- Review screen ----------
   if (draft) {
@@ -231,6 +238,7 @@ export default function InvoiceScanner({ onBack }) {
 
   // ---------- Main list ----------
   const weeks = groupByWeek(invoices);
+  const grandTotal = invoices.reduce((s, i) => s + (i.total || 0), 0);
 
   return (
     <div className="rc-scroll-area">
@@ -242,7 +250,9 @@ export default function InvoiceScanner({ onBack }) {
         </div>
         <div>
           <h2 className="rc-detail-title">Invoices</h2>
-          <div className="rc-stock-unit">{invoices.length} saved</div>
+          <div className="rc-stock-unit">
+            {invoices.length} saved{invoices.length ? ` · ${money(grandTotal)}` : ""}
+          </div>
         </div>
       </div>
 
@@ -268,6 +278,15 @@ export default function InvoiceScanner({ onBack }) {
         <div className="rc-urgent-note" style={{ marginTop: 14, wordBreak: "break-word" }}>
           {err}
         </div>
+      )}
+
+      {invoices.length > 0 && (
+        <button onClick={exportAll} className="rc-export-btn" style={{ marginBottom: 22 }}>
+          <Download size={15} />
+          <span>
+            Export all {invoices.length} invoice{invoices.length === 1 ? "" : "s"} to Excel
+          </span>
+        </button>
       )}
 
       {weeks.map(([key, rows]) => {
@@ -315,7 +334,7 @@ export default function InvoiceScanner({ onBack }) {
 
                 <button onClick={() => exportWeek(key, rows)} className="rc-export-btn">
                   <Download size={15} />
-                  <span>Export this week to Excel</span>
+                  <span>Export this week only</span>
                 </button>
               </>
             )}
