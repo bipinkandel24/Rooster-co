@@ -1,10 +1,11 @@
 // Which kitchen modules belong to the daily prep run.
-// Match these ids to the ones in content.js
+// These ids match content.js exactly.
 export const DAILY_PREP_IDS = [
   "hotfood",
   "saladprep",
   "saladbar",
-  "backupprep",
+  "backup",
+  "marination",
   "tzatziki",
   "chickensalt",
 ];
