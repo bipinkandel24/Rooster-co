@@ -862,3 +862,31 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 14px; padding: 16px;
 }
+
+.rc-scan-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--accent) 100%);
+  border: none; border-radius: 16px; padding: 18px;
+  color: var(--accent-on); font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer; margin-bottom: 22px;
+}
+.rc-scan-btn:disabled { opacity: 0.7; cursor: wait; }
+
+.rc-field-row { display: flex; gap: 10px; }
+.rc-field-row .rc-field { flex: 1; min-width: 0; }
+
+.rc-week-block { margin-bottom: 16px; }
+.rc-week-head {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 13px 14px;
+  color: inherit; text-align: left; cursor: pointer;
+}
+.rc-export-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; background: none;
+  border: 1px solid var(--ok-border); border-radius: 12px;
+  padding: 11px; color: var(--ok-text);
+  font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+}

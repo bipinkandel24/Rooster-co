@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar } from "lucide-react";
+import { Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar, Receipt } from "lucide-react";
+import InvoiceScanner from "./InvoiceScanner";
 
 export default function ManagementPortal({ onBack, onLogout, onSessionExpired }) {
   const [staffId, setStaffId] = useState(null);
   const [staff, setStaff] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
+  const [showInvoices, setShowInvoices] = useState(false);
 
   // Staff records live on the server and are fetched against the session
   // cookie, so they never sit in the JS bundle for anyone to read.
@@ -48,6 +50,11 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
 
   const telHref = (n) => "tel:" + String(n || "").replace(/\s/g, "");
 
+  // ---------- Invoice scanner ----------
+  if (showInvoices) {
+    return <InvoiceScanner onBack={() => setShowInvoices(false)} />;
+  }
+
   // ---------- Staff detail ----------
   if (person) {
     const em = person.emergency || {};
@@ -67,7 +74,7 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
         <div className="rc-stock-list">
           {person.phone ? (
             <a href={telHref(person.phone)} className="rc-contact-row">
-              <Phone size={16} color="#E3A94A" />
+              <Phone size={16} color="var(--gold)" />
               <div className="rc-stock-info">
                 <div className="rc-stock-label">{person.phone}</div>
                 <div className="rc-stock-unit">Tap to call</div>
@@ -76,7 +83,7 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
           ) : null}
           {person.email ? (
             <a href={"mailto:" + person.email} className="rc-contact-row">
-              <Mail size={16} color="#E3A94A" />
+              <Mail size={16} color="var(--gold)" />
               <div className="rc-stock-info">
                 <div className="rc-stock-label">{person.email}</div>
                 <div className="rc-stock-unit">Tap to email</div>
@@ -88,7 +95,7 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
         <div className="rc-checklist-heading" style={{ marginTop: 22 }}>Details</div>
         <div className="rc-stock-list">
           <div className="rc-stock-row">
-            <Calendar size={15} color="#7C7568" />
+            <Calendar size={15} color="var(--text-3)" />
             <div className="rc-stock-info">
               <div className="rc-stock-unit">Started</div>
               <div className="rc-stock-label">{fmtDate(person.startDate)}</div>
@@ -111,7 +118,7 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
               Emergency Contact
             </div>
             <a href={telHref(em.phone)} className="rc-contact-row">
-              <Phone size={16} color="#C97B62" />
+              <Phone size={16} color="var(--danger-soft)" />
               <div className="rc-stock-info">
                 <div className="rc-stock-label">{em.name}</div>
                 <div className="rc-stock-unit">{em.phone || "No number on file"}</div>
@@ -129,11 +136,26 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
       <button onClick={onBack} className="rc-back-btn">← Back</button>
 
       <div className="rc-detail-heading">
-        <div className="rc-module-icon" style={{ background: "#6E8A8A22" }}>
-          <Users size={19} color="#6E8A8A" />
+        <div className="rc-module-icon" style={{ background: "var(--bg-card)" }}>
+          <Users size={19} color="var(--teal)" />
         </div>
         <h2 className="rc-detail-title">Management</h2>
       </div>
+
+      <button
+        onClick={() => setShowInvoices(true)}
+        className="rc-menu-item"
+        style={{ marginBottom: 22 }}
+      >
+        <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
+          <Receipt size={19} color="var(--gold)" />
+        </div>
+        <div className="rc-stock-info">
+          <div className="rc-stock-label">Invoices</div>
+          <div className="rc-stock-unit">Scan and export weekly</div>
+        </div>
+        <ChevronRight size={17} color="var(--text-3)" />
+      </button>
 
       <div className="rc-checklist-heading">
         Staff
@@ -161,7 +183,7 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
                 <div className="rc-stock-label">{s.name}</div>
                 <div className="rc-stock-unit">{s.role}</div>
               </div>
-              <ChevronRight size={17} color="#7C7568" />
+              <ChevronRight size={17} color="var(--text-3)" />
             </button>
           ))}
         </div>
