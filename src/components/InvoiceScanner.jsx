@@ -42,6 +42,8 @@ export default function InvoiceScanner({ onBack }) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.detail || d.error || "Scan failed");
 
     setBusy(true);
     setErr("");

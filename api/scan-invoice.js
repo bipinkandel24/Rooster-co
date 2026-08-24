@@ -27,7 +27,37 @@ Rules:
 - Set confidence to "low" if the image is blurry, cropped, or you're unsure about the totals.
 - Include every line item you can read.`;
 
-const MODEL = "gemini-2.0-flash";
+// Tried in order — if the first has been renamed or isn't available on your
+// key, the next one is attempted before giving up.
+const MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+
+async function callGemini(model, key, image, mediaType) {
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { inline_data: { mime_type: mediaType || "image/jpeg", data: image } },
+              { text: PROMPT },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 2048,
+          responseMimeType: "application/json",
+        },
+      }),
+    }
+  );
+
+  const body = await r.text();
+  return { ok: r.ok, status: r.status, body };
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -37,53 +67,72 @@ export default async function handler(req, res) {
     if (!image) return res.status(400).json({ ok: false, error: "No image" });
 
     const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (!key) return res.status(500).json({ ok: false, error: "Missing API key" });
-
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { inline_data: { mime_type: mediaType || "image/jpeg", data: image } },
-                { text: PROMPT },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 2048,
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!r.ok) {
-      console.error("gemini error:", await r.text());
-      return res.status(500).json({ ok: false, error: "Scan failed" });
+    if (!key) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing API key",
+        detail: "Neither API_KEY nor GEMINI_API_KEY is set in this environment.",
+      });
     }
 
-    const j = await r.json();
+    let last = null;
+    let good = null;
+
+    for (const model of MODELS) {
+      const attempt = await callGemini(model, key, image, mediaType);
+      if (attempt.ok) {
+        good = attempt;
+        break;
+      }
+      last = { model, status: attempt.status, body: attempt.body };
+      console.error(`gemini error [${model}] ${attempt.status}:`, attempt.body);
+      // A bad key or disabled API won't be fixed by trying another model
+      if (attempt.status === 400 || attempt.status === 403) break;
+    }
+
+    if (!good) {
+      return res.status(500).json({
+        ok: false,
+        error: "Scan failed",
+        detail: last ? `${last.model} → ${last.status}: ${last.body}` : "No response",
+      });
+    }
+
+    const j = JSON.parse(good.body);
+
+    const blocked = j.promptFeedback?.blockReason;
+    if (blocked) {
+      return res.status(422).json({ ok: false, error: "Scan blocked", detail: blocked });
+    }
+
     const text = (j.candidates?.[0]?.content?.parts || [])
       .map((p) => p.text || "")
       .join("")
       .replace(/```json|```/g, "")
       .trim();
 
+    if (!text) {
+      return res.status(422).json({
+        ok: false,
+        error: "Empty response",
+        detail: JSON.stringify(j).slice(0, 500),
+      });
+    }
+
     let data;
     try {
       data = JSON.parse(text);
     } catch {
-      return res.status(422).json({ ok: false, error: "Couldn't read that invoice" });
+      return res.status(422).json({
+        ok: false,
+        error: "Couldn't read that invoice",
+        detail: text.slice(0, 300),
+      });
     }
 
     res.json({ ok: true, data });
   } catch (e) {
     console.error("scan error:", e);
-    res.status(500).json({ ok: false, error: "Scan failed" });
+    res.status(500).json({ ok: false, error: "Scan failed", detail: String(e).slice(0, 300) });
   }
 }
