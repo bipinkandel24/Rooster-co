@@ -43,6 +43,8 @@ export const KITCHEN_MODULES = [
       { label: "Tomato slices for souvlaki & burgers", duration: "1:20", done: false },
       { label: "Chopped onion", duration: "1:10", done: false },
       { label: "Lettuce", duration: "1:05", done: false },
+      { label: "2 tubs of tzatziki", duration: "1:00", done: false },
+      { label: "5 takeaway containers of tzatziki", duration: "1:00", done: false },
     ]
   },
   {
@@ -186,6 +188,8 @@ export const YOUTUBE_VIDEOS = {
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
   ],
   saladbar: [
+    "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
+    "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
     "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
