@@ -11,7 +11,7 @@ export const DAILY_PREP_IDS = [
 ];
 
 // Code to reveal the training videos. Change as you like.
-export const VIDEO_CODE = "1234";
+export const VIDEO_CODE = "rooster";
 
 const KEY = "rc_daily_prep";
 
