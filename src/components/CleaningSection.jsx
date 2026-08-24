@@ -13,9 +13,10 @@ export default function CleaningSection({
   ownerEmail,
 }) {
   const [nameInput, setNameInput] = useState("");
-  const [sent, setSent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // Keyed by area so submitting one section doesn't lock the other
+  const [sentMap, setSentMap] = useState({});
+  const [busyMap, setBusyMap] = useState({});
+  const [failedMap, setFailedMap] = useState({});
 
   const AREAS = [
     { id: "foh", label: "Front of House", sub: "Dining, counter, drinks", Icon: Sofa, color: "#6E8A8A" },
@@ -37,9 +38,16 @@ export default function CleaningSection({
                   <a.Icon size={19} color={a.color} />
                 </div>
                 <div className="rc-stock-info">
-                  <div className="rc-stock-label">{a.label}</div>
+                  <div className="rc-stock-label">
+                    {a.label}
+                    {sentMap[a.id] && <span className="rc-due-dot" style={{ background: "var(--ok-border)" }} />}
+                  </div>
                   <div className="rc-stock-unit">
-                    {names[a.id] ? `${names[a.id]} · ${done}/${total} done` : a.sub}
+                    {sentMap[a.id]
+                      ? `Submitted by ${names[a.id]}`
+                      : names[a.id]
+                      ? `${names[a.id]} · ${done}/${total} done`
+                      : a.sub}
                   </div>
                 </div>
                 <ChevronRight size={17} color="var(--text-3)" />
@@ -103,10 +111,20 @@ export default function CleaningSection({
   const doneCount = marks.filter(Boolean).length;
   const canSubmit = doneCount > 0;
 
+  const sent = !!sentMap[area];
+  const busy = !!busyMap[area];
+  const failed = !!failedMap[area];
+
+  const signOut = () => {
+    onSetName(area, null);
+    setSentMap((p) => ({ ...p, [area]: false }));
+    setFailedMap((p) => ({ ...p, [area]: false }));
+  };
+
   const submit = async () => {
     if (busy) return;
-    setBusy(true);
-    setFailed(false);
+    setBusyMap((p) => ({ ...p, [area]: true }));
+    setFailedMap((p) => ({ ...p, [area]: false }));
 
     const done = list.filter((_, i) => marks[i]);
     const missed = list.filter((_, i) => !marks[i]);
@@ -125,11 +143,11 @@ export default function CleaningSection({
       });
       const d = await r.json();
       if (!d.ok) throw new Error();
-      setSent(true);
+      setSentMap((p) => ({ ...p, [area]: true }));
     } catch {
-      setFailed(true);
+      setFailedMap((p) => ({ ...p, [area]: true }));
     } finally {
-      setBusy(false);
+      setBusyMap((p) => ({ ...p, [area]: false }));
     }
   };
 
@@ -154,7 +172,7 @@ export default function CleaningSection({
 
     const subject = `${meta.label} cleaning — ${now.toLocaleDateString("en-AU")} — ${staffName}`;
     window.location.href = `mailto:${ownerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setSent(true);
+    setSentMap((p) => ({ ...p, [area]: true }));
   };
 
   return (
@@ -177,7 +195,7 @@ export default function CleaningSection({
         <span>
           Signed in as <strong style={{ color: "var(--text)" }}>{staffName}</strong>
         </span>
-        <button onClick={() => onSetName(area, null)} className="rc-switch-btn">
+        <button onClick={signOut} className="rc-switch-btn">
           Not you?
         </button>
       </div>
@@ -203,10 +221,15 @@ export default function CleaningSection({
       </div>
 
       {sent ? (
-        <div className="rc-sent-banner">
-          <CheckCircle2 size={16} color="var(--ok-text)" />
-          <span>Sent to management. Thanks {staffName}!</span>
-        </div>
+        <>
+          <div className="rc-sent-banner">
+            <CheckCircle2 size={16} color="var(--ok-text)" />
+            <span>{meta.label} sent to management. Thanks {staffName}!</span>
+          </div>
+          <button onClick={onBackToAreas} className="rc-submit-btn rc-submit-active" style={{ marginTop: 12 }}>
+            Back to both areas
+          </button>
+        </>
       ) : (
         <>
           {failed && (
