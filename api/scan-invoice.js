@@ -29,7 +29,7 @@ Rules:
 
 // Tried in order — if the first has been renamed or isn't available on your
 // key, the next one is attempted before giving up.
-const MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+const MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.6-flash"];
 
 async function callGemini(model, key, image, mediaType) {
   const r = await fetch(
