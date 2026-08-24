@@ -40,19 +40,19 @@ export const KITCHEN_MODULES = [
   },
   {
     id: "saladbar", title: "Salad Bar Setup", icon: Layers, color: "#7C8F52", items: [
-      { label: "Tomato slices for souvlaki & burgers", duration: "1:20", done: false },
-      { label: "Chopped onion", duration: "1:10", done: false },
-      { label: "Lettuce", duration: "1:05", done: false },
+      { label: "Tomato slices for souvlaki & burgers (4 Tubs)", duration: "1:20", done: false },
+      { label: "Chopped onion (3 Tubs)", duration: "1:10", done: false },
+      { label: "Lettuce (3 Tubs)", duration: "1:05", done: false },
       { label: "2 tubs of tzatziki", duration: "1:00", done: false },
       { label: "5 takeaway containers of tzatziki", duration: "1:00", done: false },
     ]
   },
   {
     id: "backup", title: "Backup Prep", icon: PackagePlus, color: "#8A6A3E", items: [
-      { label: "Chopped cucumber & tomato for Greek salad", duration: "1:40", done: false },
+      { label: "Chopped cucumber & tomato for Greek salad (1 Med Tubs Each)", duration: "1:40", done: false },
       { label: "Mixed grass (capsicum, celery, parsley)", duration: "1:50", done: false },
-      { label: "Roasted veg prep", duration: "1:45", done: false },
-      { label: "Scallop potatoes backup", duration: "1:55", done: false },
+      { label: "Roasted veg prep (4 Tubs Daily)", duration: "1:45", done: false },
+      { label: "Scallop potatoes backup (1 Big Tray and 1 Small Tray)", duration: "1:55", done: false },
     ]
   },
   {
