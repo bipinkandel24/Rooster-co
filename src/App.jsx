@@ -9,6 +9,7 @@ import ModuleRow from "./components/ModuleRow";
 import ModuleDetail from "./components/ModuleDetail";
 import VideoPlayer from "./components/VideoPlayer";
 import CleaningSection from "./components/CleaningSection";
+import DailyPrep from "./components/DailyPrep";
 import OrderPortal from "./components/OrderPortal";
 import OwnerGate from "./components/OwnerGate";
 import ManagementPortal from "./components/ManagementPortal";
@@ -23,6 +24,7 @@ import {
   FRONT_CHECKLIST,
   BACK_CHECKLIST,
 } from "./data/content";
+import { DAILY_PREP_IDS } from "./data/dailyPrep";
 
 const OWNER_EMAIL = "roostermanager8@gmail.com";
 
@@ -38,6 +40,7 @@ export default function App() {
   const [safetyMods, setSafetyMods] = useState(SAFETY_MODULES);
   const [openId, setOpenId] = useState(null);
   const [playingVideo, setPlayingVideo] = useState(null);
+  const [showPrep, setShowPrep] = useState(false);
 
   // Cleaning: two independent areas, each with its own name + progress
   const [cleaningArea, setCleaningArea] = useState(null);
@@ -83,8 +86,12 @@ export default function App() {
   const setMods = tab === "kitchen" ? setKitchenMods : setSafetyMods;
   const openMod = allMods.find((m) => m.id === openId);
 
+  // Daily prep pulls its modules out of the normal kitchen list
+  const prepMods = kitchenMods.filter((m) => DAILY_PREP_IDS.includes(m.id));
+  const otherKitchenMods = kitchenMods.filter((m) => !DAILY_PREP_IDS.includes(m.id));
+
   const ownerArea = showOrders || showMgmt;
-  const hidden = ownerArea || showIncident || showTemps;
+  const hidden = ownerArea || showIncident || showTemps || showPrep;
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -102,6 +109,7 @@ export default function App() {
     setShowMgmt(false);
     setShowIncident(false);
     setShowTemps(false);
+    setShowPrep(false);
   };
 
   const toggleItem = (modId, idx) => {
@@ -204,6 +212,15 @@ export default function App() {
           </button>
         </div>
 
+        {/* DAILY PREP — flattened checklist, videos behind a code */}
+        {showPrep && (
+          <DailyPrep
+            mods={prepMods}
+            onBack={() => setShowPrep(false)}
+            onPlay={(src, label) => setPlayingVideo({ src, label })}
+          />
+        )}
+
         {/* INCIDENT REPORT — open to all staff, no login */}
         {showIncident && <IncidentReport onBack={() => setShowIncident(false)} />}
 
@@ -246,7 +263,14 @@ export default function App() {
           <>
             <Header eyebrow="Home" title="Kitchen" Icon={ChefHat} />
             <div className="rc-scroll-area">
-              {kitchenMods.map((m) => (
+              <button onClick={() => setShowPrep(true)} className="rc-prep-card">
+                <div className="rc-prep-card-title">Daily Prep</div>
+                <div className="rc-prep-card-sub">
+                  Hot food, salads, sauces — everything before service
+                </div>
+              </button>
+
+              {otherKitchenMods.map((m) => (
                 <ModuleRow key={m.id} mod={m} onOpen={(mod) => setOpenId(mod.id)} />
               ))}
             </div>
