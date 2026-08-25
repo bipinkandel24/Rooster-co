@@ -1,8 +1,9 @@
 // Find the largest quadrilateral (a sheet of paper) in a canvas.
-// Sobel edges → threshold → largest connected blob → convex hull → 4 corners.
-// Returns [tl, tr, br, bl] in source pixels, or null if nothing convincing.
+// Runs on a small downscale with typed-array queues so it stays fast on phones.
 
-function toGreyDownscaled(canvas, target = 400) {
+const WORK = 240; // detection resolution — small on purpose
+
+function toGreyDownscaled(canvas, target = WORK) {
   const scale = Math.min(1, target / Math.max(canvas.width, canvas.height));
   const w = Math.max(40, Math.round(canvas.width * scale));
   const h = Math.max(40, Math.round(canvas.height * scale));
@@ -23,17 +24,13 @@ function toGreyDownscaled(canvas, target = 400) {
 
 function blur(src, w, h) {
   const out = new Float32Array(w * h);
-  const k = [1, 2, 1, 2, 4, 2, 1, 2, 1];
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
-      let s = 0;
-      let i = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          s += src[(y + dy) * w + (x + dx)] * k[i++];
-        }
-      }
-      out[y * w + x] = s / 16;
+      const i = y * w + x;
+      out[i] =
+        (src[i - w - 1] + 2 * src[i - w] + src[i - w + 1] +
+         2 * src[i - 1] + 4 * src[i] + 2 * src[i + 1] +
+         src[i + w - 1] + 2 * src[i + w] + src[i + w + 1]) / 16;
     }
   }
   return out;
@@ -51,7 +48,7 @@ function sobel(src, w, h) {
       const gy =
         -src[i - w - 1] - 2 * src[i - w] - src[i - w + 1] +
         src[i + w - 1] + 2 * src[i + w] + src[i + w + 1];
-      const m = Math.hypot(gx, gy);
+      const m = Math.abs(gx) + Math.abs(gy); // cheaper than hypot
       mag[i] = m;
       if (m > max) max = m;
     }
@@ -59,65 +56,65 @@ function sobel(src, w, h) {
   return { mag, max };
 }
 
-// Fill inward from the border of the edge map; whatever isn't reached is
-// enclosed by edges — i.e. the sheet of paper.
+// Flood from the border using a typed-array queue; anything unreached and
+// not itself an edge is enclosed — i.e. the sheet of paper.
 function interiorMask(edge, w, h) {
-  const seen = new Uint8Array(w * h);
-  const stack = [];
+  const n = w * h;
+  const seen = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  let head = 0;
+  let tail = 0;
 
-  for (let x = 0; x < w; x++) {
-    stack.push(x, (h - 1) * w + x);
-  }
-  for (let y = 0; y < h; y++) {
-    stack.push(y * w, y * w + w - 1);
-  }
-
-  while (stack.length) {
-    const i = stack.pop();
-    if (i < 0 || i >= w * h || seen[i] || edge[i]) continue;
+  const push = (i) => {
+    if (i < 0 || i >= n || seen[i] || edge[i]) return;
     seen[i] = 1;
+    queue[tail++] = i;
+  };
+
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+
+  while (head < tail) {
+    const i = queue[head++];
     const x = i % w;
-    if (x > 0) stack.push(i - 1);
-    if (x < w - 1) stack.push(i + 1);
-    if (i >= w) stack.push(i - w);
-    if (i < w * (h - 1)) stack.push(i + w);
+    if (x > 0) push(i - 1);
+    if (x < w - 1) push(i + 1);
+    if (i >= w) push(i - w);
+    if (i < n - w) push(i + w);
   }
 
-  const inside = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) inside[i] = seen[i] || edge[i] ? 0 : 1;
+  const inside = new Uint8Array(n);
+  for (let i = 0; i < n; i++) inside[i] = seen[i] || edge[i] ? 0 : 1;
   return inside;
 }
 
-// Largest 4-connected component
+// Largest 4-connected component, returned as a bounds-checked point list
 function largestBlob(mask, w, h) {
-  const label = new Int32Array(w * h).fill(-1);
-  let best = null;
+  const n = w * h;
+  const done = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  let bestPts = null;
 
-  for (let s = 0; s < w * h; s++) {
-    if (!mask[s] || label[s] !== -1) continue;
+  for (let s = 0; s < n; s++) {
+    if (!mask[s] || done[s]) continue;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = s;
+    done[s] = 1;
     const pts = [];
-    const stack = [s];
-    label[s] = s;
 
-    while (stack.length) {
-      const i = stack.pop();
+    while (head < tail) {
+      const i = queue[head++];
       pts.push(i);
       const x = i % w;
-      const nb = [];
-      if (x > 0) nb.push(i - 1);
-      if (x < w - 1) nb.push(i + 1);
-      if (i >= w) nb.push(i - w);
-      if (i < w * (h - 1)) nb.push(i + w);
-      for (const n of nb) {
-        if (mask[n] && label[n] === -1) {
-          label[n] = s;
-          stack.push(n);
-        }
-      }
+      if (x > 0 && mask[i - 1] && !done[i - 1]) { done[i - 1] = 1; queue[tail++] = i - 1; }
+      if (x < w - 1 && mask[i + 1] && !done[i + 1]) { done[i + 1] = 1; queue[tail++] = i + 1; }
+      if (i >= w && mask[i - w] && !done[i - w]) { done[i - w] = 1; queue[tail++] = i - w; }
+      if (i < n - w && mask[i + w] && !done[i + w]) { done[i + w] = 1; queue[tail++] = i + w; }
     }
-    if (!best || pts.length > best.length) best = pts;
+    if (!bestPts || pts.length > bestPts.length) bestPts = pts;
   }
-  return best;
+  return bestPts;
 }
 
 function convexHull(points) {
@@ -149,48 +146,25 @@ function polyArea(p) {
   return Math.abs(a) / 2;
 }
 
-// Reduce a hull to the 4 points enclosing the most area
-function bestQuad(hull) {
+// Pick the 4 hull points furthest toward each corner of the frame — O(n),
+// far cheaper than iteratively dropping vertices.
+function quadFromHull(hull) {
   if (hull.length < 4) return null;
-  if (hull.length === 4) return hull;
-
-  let pts = [...hull];
-  while (pts.length > 4) {
-    let dropIdx = 0;
-    let bestArea = -1;
-    for (let i = 0; i < pts.length; i++) {
-      const trial = pts.filter((_, k) => k !== i);
-      const a = polyArea(trial);
-      if (a > bestArea) {
-        bestArea = a;
-        dropIdx = i;
-      }
-    }
-    pts = pts.filter((_, k) => k !== dropIdx);
+  let tl = hull[0], tr = hull[0], br = hull[0], bl = hull[0];
+  for (const p of hull) {
+    if (p.x + p.y < tl.x + tl.y) tl = p;
+    if (p.x - p.y > tr.x - tr.y) tr = p;
+    if (p.x + p.y > br.x + br.y) br = p;
+    if (p.y - p.x > bl.y - bl.x) bl = p;
   }
-  return pts;
-}
-
-// Order as [tl, tr, br, bl]
-function orderCorners(q) {
-  const cx = q.reduce((s, p) => s + p.x, 0) / 4;
-  const cy = q.reduce((s, p) => s + p.y, 0) / 4;
-  const withAngle = q.map((p) => ({ ...p, a: Math.atan2(p.y - cy, p.x - cx) }));
-  withAngle.sort((a, b) => a.a - b.a);
-
-  // Rotate so the top-left (smallest x+y) comes first
-  let startIdx = 0;
-  let bestSum = Infinity;
-  withAngle.forEach((p, i) => {
-    const s = p.x + p.y;
-    if (s < bestSum) {
-      bestSum = s;
-      startIdx = i;
+  const q = [tl, tr, br, bl];
+  // Reject if any two corners collapsed onto the same point
+  for (let i = 0; i < 4; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      if (q[i].x === q[j].x && q[i].y === q[j].y) return null;
     }
-  });
-  const ordered = [];
-  for (let i = 0; i < 4; i++) ordered.push(withAngle[(startIdx + i) % 4]);
-  return ordered.map(({ x, y }) => ({ x, y }));
+  }
+  return q;
 }
 
 export function detectDocument(canvas) {
@@ -200,8 +174,7 @@ export function detectDocument(canvas) {
     const { mag, max } = sobel(sm, w, h);
     if (max < 1) return null;
 
-    // Try a few thresholds — tight first, loosening if nothing is found
-    for (const frac of [0.16, 0.11, 0.07]) {
+    for (const frac of [0.16, 0.10]) {
       const t = max * frac;
       const edge = new Uint8Array(w * h);
       for (let i = 0; i < w * h; i++) edge[i] = mag[i] > t ? 1 : 0;
@@ -210,34 +183,27 @@ export function detectDocument(canvas) {
       const blob = largestBlob(inside, w, h);
       if (!blob) continue;
 
-      // Must cover a decent share of the frame to be a sheet of paper
       const coverage = blob.length / (w * h);
       if (coverage < 0.12 || coverage > 0.97) continue;
 
-      const pts = blob.map((i) => ({ x: i % w, y: Math.floor(i / w) }));
+      const pts = blob.map((i) => ({ x: i % w, y: (i / w) | 0 }));
       const hull = convexHull(pts);
-      const quad = bestQuad(hull);
+      const quad = quadFromHull(hull);
       if (!quad) continue;
 
-      // Reject shapes that lost too much area becoming a quad
-      if (polyArea(quad) < polyArea(hull) * 0.75) continue;
+      if (polyArea(quad) < polyArea(hull) * 0.7) continue;
 
-      const ordered = orderCorners(quad);
-
-      // Sanity: no absurdly thin result
       const wid = Math.max(
-        Math.hypot(ordered[1].x - ordered[0].x, ordered[1].y - ordered[0].y),
-        Math.hypot(ordered[2].x - ordered[3].x, ordered[2].y - ordered[3].y)
+        Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y),
+        Math.hypot(quad[2].x - quad[3].x, quad[2].y - quad[3].y)
       );
       const hei = Math.max(
-        Math.hypot(ordered[3].x - ordered[0].x, ordered[3].y - ordered[0].y),
-        Math.hypot(ordered[2].x - ordered[1].x, ordered[2].y - ordered[1].y)
+        Math.hypot(quad[3].x - quad[0].x, quad[3].y - quad[0].y),
+        Math.hypot(quad[2].x - quad[1].x, quad[2].y - quad[1].y)
       );
-      const ratio = Math.max(wid, hei) / Math.max(1, Math.min(wid, hei));
-      if (ratio > 6) continue;
+      if (Math.max(wid, hei) / Math.max(1, Math.min(wid, hei)) > 6) continue;
 
-      // Scale back to full-resolution pixels
-      return ordered.map((p) => ({ x: p.x / scale, y: p.y / scale }));
+      return quad.map((p) => ({ x: p.x / scale, y: p.y / scale }));
     }
     return null;
   } catch {

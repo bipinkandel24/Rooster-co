@@ -23,7 +23,7 @@ export default function CropView({ canvas, onDone, onCancel }) {
     ];
   }, [canvas]);
 
-  // Fit the photo to the available width, then try to find the paper
+  // Fit the photo, show manual corners immediately, then try detection
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap || !canvas) return;
@@ -32,12 +32,17 @@ export default function CropView({ canvas, onDone, onCancel }) {
     const scale = avail / canvas.width;
     setDisplay({ w: avail, h: Math.round(canvas.height * scale), scale });
 
-    // Let the first paint land before running detection
+    // Never block the UI on detection — the manual rectangle shows straight away
+    setCorners(insetCorners());
+
     const t = setTimeout(() => {
+      const started = performance.now();
       const found = detectDocument(canvas);
-      setCorners(found || insetCorners());
-      setDetected(Boolean(found));
-    }, 30);
+      if (found && performance.now() - started < 3000) {
+        setCorners(found);
+        setDetected(true);
+      }
+    }, 50);
 
     return () => clearTimeout(t);
   }, [canvas, insetCorners]);
@@ -132,15 +137,7 @@ export default function CropView({ canvas, onDone, onCancel }) {
     onDone(dataUrl);
   };
 
-  if (!corners) {
-    return (
-      <div className="rc-scroll-area">
-        <div className="rc-namegate">
-          <div className="rc-namegate-sub">Finding the edges…</div>
-        </div>
-      </div>
-    );
-  }
+  if (!corners) return null;
 
   const pts = corners.map((c) => ({
     x: c.x * display.scale,
