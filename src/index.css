@@ -940,3 +940,35 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   box-shadow: 0 8px 24px var(--shadow);
   z-index: 55; text-align: center;
 }
+
+.rc-crop-wrap {
+  position: relative;
+  width: 100%;
+  margin-bottom: 16px;
+  touch-action: none;
+  user-select: none;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+.rc-crop-canvas { display: block; width: 100%; }
+.rc-crop-overlay { position: absolute; inset: 0; pointer-events: none; }
+.rc-crop-handle {
+  position: absolute;
+  width: 30px; height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  cursor: grab;
+  touch-action: none;
+}
+.rc-crop-handle-on { transform: scale(1.25); cursor: grabbing; }
+
+.rc-crop-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+}

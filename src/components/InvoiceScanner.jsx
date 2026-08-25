@@ -7,8 +7,10 @@ import {
   loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
   groupByWeek, weekLabel, money,
 } from "../data/invoices";
-import { makeScan, makeThumbBase64 } from "../utils/scanFilter";
+import { makeThumbBase64 } from "../utils/scanFilter";
+import { fileToCanvas } from "../utils/perspective";
 import { putScan, getScan, deleteScan, clearScans } from "../data/imageStore";
+import CropView from "./CropView";
 
 const emptyDraft = {
   supplier: "", abn: "", invoiceNumber: "", invoiceDate: "",
@@ -18,6 +20,7 @@ const emptyDraft = {
 export default function InvoiceScanner({ onBack }) {
   const [invoices, setInvoices] = useState(() => loadInvoices());
   const [draft, setDraft] = useState(null);
+  const [cropping, setCropping] = useState(null); // source canvas
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [openWeek, setOpenWeek] = useState(null);
@@ -28,18 +31,27 @@ export default function InvoiceScanner({ onBack }) {
 
   const set = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
 
+  // Step 1 — load the photo and hand it to the cropper
   const pick = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    setErr("");
+    try {
+      const c = await fileToCanvas(file);
+      setCropping(c);
+    } catch {
+      setErr("Couldn't open that photo.");
+    }
+  };
 
+  // Step 2 — cropped + enhanced image comes back, send it to be read
+  const afterCrop = async (dataUrl) => {
+    setCropping(null);
     setBusy(true);
     setErr("");
     try {
-      // Clean scanner-style image kept for the record
-      const scan = await makeScan(file);
-      // Lighter copy sent to the AI
-      const forAI = await makeThumbBase64(scan.dataUrl);
+      const forAI = await makeThumbBase64(dataUrl);
 
       const r = await fetch("/api/scan-invoice", {
         method: "POST",
@@ -59,7 +71,7 @@ export default function InvoiceScanner({ onBack }) {
         gst: d.data.gst ?? "",
         total: d.data.total ?? "",
         lineItems: d.data.lineItems || [],
-        _scanDataUrl: scan.dataUrl,
+        _scanDataUrl: dataUrl,
       });
     } catch (e) {
       setErr(e.message || "Couldn't read that invoice. Try a clearer photo.");
@@ -193,6 +205,17 @@ export default function InvoiceScanner({ onBack }) {
   const exportAll = () =>
     exportRows(invoices, `rooster-invoices-all-${new Date().toISOString().slice(0, 10)}.xlsx`);
 
+  // ---------- Crop screen ----------
+  if (cropping) {
+    return (
+      <CropView
+        canvas={cropping}
+        onDone={afterCrop}
+        onCancel={() => setCropping(null)}
+      />
+    );
+  }
+
   // ---------- Review screen ----------
   if (draft) {
     const lowConf = draft.confidence === "low";
@@ -317,7 +340,6 @@ export default function InvoiceScanner({ onBack }) {
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={pick}
         style={{ display: "none" }}
       />
@@ -328,7 +350,7 @@ export default function InvoiceScanner({ onBack }) {
         className="rc-scan-btn"
       >
         {busy ? <Loader2 size={20} className="rc-spin" /> : <Camera size={20} />}
-        <span>{busy ? "Scanning…" : "Scan an invoice"}</span>
+        <span>{busy ? "Reading invoice…" : "Scan an invoice"}</span>
       </button>
 
       {err && (
@@ -462,6 +484,7 @@ export default function InvoiceScanner({ onBack }) {
                 <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
                 {sendingId === viewing.id ? "Sending…" : "Email this scan"}
               </button>
+              
               <a
                 href={viewing.dataUrl}
                 download={`invoice-${viewing.inv.invoiceNumber || viewing.id}.jpg`}
