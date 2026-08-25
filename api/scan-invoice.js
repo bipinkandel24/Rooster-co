@@ -25,11 +25,12 @@ Rules:
 - GST in Australia is 10%. If only a total is shown and it says "includes GST", gst = total / 11.
 - If a field genuinely isn't on the invoice, use null. Never guess or invent a value.
 - Set confidence to "low" if the image is blurry, cropped, or you're unsure about the totals.
-- Include every line item you can read.`;
+- Keep descriptions short — under 60 characters each.
+- List at most 30 line items. If the invoice has more, include the first 30 and set notes to "more line items not captured".
+- The totals matter most. Always fill subtotal, gst and total before spending effort on line items.`;
 
-// Tried in order — if the first has been renamed or isn't available on your
-// key, the next one is attempted before giving up.
-const MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.6-flash"];
+// Tried in order — if the first isn't available on this key, the next is used.
+const MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.0-flash"];
 
 async function callGemini(model, key, image, mediaType) {
   const r = await fetch(
@@ -48,7 +49,7 @@ async function callGemini(model, key, image, mediaType) {
         ],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
         },
       }),
@@ -57,6 +58,43 @@ async function callGemini(model, key, image, mediaType) {
 
   const body = await r.text();
   return { ok: r.ok, status: r.status, body };
+}
+
+// Last-resort repair for a response that was cut off mid-JSON: close any
+// dangling string/array/object so the totals we already have survive.
+function repairTruncatedJson(text) {
+  let s = text.trim();
+
+  // Drop a trailing partial line-item object
+  const lastBrace = s.lastIndexOf("}");
+  if (lastBrace > -1 && s.length - lastBrace < 400) {
+    s = s.slice(0, lastBrace + 1);
+  }
+
+  let inString = false;
+  let escaped = false;
+  const stack = [];
+
+  for (const ch of s) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\") { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{" || ch === "[") stack.push(ch);
+    if (ch === "}" || ch === "]") stack.pop();
+  }
+
+  if (inString) s += '"';
+  s = s.replace(/,\s*$/, "");
+  while (stack.length) {
+    s += stack.pop() === "{" ? "}" : "]";
+  }
+
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -105,17 +143,21 @@ export default async function handler(req, res) {
       return res.status(422).json({ ok: false, error: "Scan blocked", detail: blocked });
     }
 
-    const text = (j.candidates?.[0]?.content?.parts || [])
+    const cand = j.candidates?.[0];
+    const finish = cand?.finishReason;
+
+    const text = (cand?.content?.parts || [])
       .map((p) => p.text || "")
       .join("")
       .replace(/```json|```/g, "")
       .trim();
 
     if (!text) {
+      console.error("empty gemini response:", JSON.stringify(j).slice(0, 1000));
       return res.status(422).json({
         ok: false,
-        error: "Empty response",
-        detail: JSON.stringify(j).slice(0, 500),
+        error: "Empty response from the reader",
+        detail: `finishReason=${finish} · ${JSON.stringify(j).slice(0, 400)}`,
       });
     }
 
@@ -123,11 +165,24 @@ export default async function handler(req, res) {
     try {
       data = JSON.parse(text);
     } catch {
-      return res.status(422).json({
-        ok: false,
-        error: "Couldn't read that invoice",
-        detail: text.slice(0, 300),
-      });
+      // Try to salvage a truncated response rather than losing the whole scan
+      data = repairTruncatedJson(text);
+      if (data) {
+        data.notes = [data.notes, "Response was cut off — check the line items."]
+          .filter(Boolean)
+          .join(" ");
+        data.confidence = "low";
+      } else {
+        console.error("unparseable gemini text:", text.slice(0, 1000));
+        return res.status(422).json({
+          ok: false,
+          error:
+            finish === "MAX_TOKENS"
+              ? "Invoice too long — the reader ran out of room"
+              : "Couldn't read that invoice",
+          detail: `finishReason=${finish} · ${text.slice(0, 300)}`,
+        });
+      }
     }
 
     res.json({ ok: true, data });
