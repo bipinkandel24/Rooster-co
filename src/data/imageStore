@@ -36,5 +36,5 @@ export async function storageUsed() {
     return { usage, quota };
   } catch {
     return null;
-  }
+  }ß
 }
