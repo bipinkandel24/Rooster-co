@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import {
   Camera, Loader2, CheckCircle2, AlertTriangle, Trash2, Download,
-  ChevronRight, FileText, X, Receipt, Mail, Eye, Send,
+  ChevronRight, FileText, X, Receipt, Mail, Eye, Send, Image as ImageIcon,
 } from "lucide-react";
 import {
   loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
@@ -28,6 +28,7 @@ export default function InvoiceScanner({ onBack }) {
   const [sendingId, setSendingId] = useState(null);
   const [toast, setToast] = useState("");
   const fileRef = useRef(null);
+  const camRef = useRef(null);
 
   const set = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
 
@@ -337,6 +338,14 @@ export default function InvoiceScanner({ onBack }) {
       </div>
 
       <input
+        ref={camRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={pick}
+        style={{ display: "none" }}
+      />
+      <input
         ref={fileRef}
         type="file"
         accept="image/*"
@@ -345,12 +354,21 @@ export default function InvoiceScanner({ onBack }) {
       />
 
       <button
-        onClick={() => fileRef.current?.click()}
+        onClick={() => camRef.current?.click()}
         disabled={busy}
         className="rc-scan-btn"
       >
         {busy ? <Loader2 size={20} className="rc-spin" /> : <Camera size={20} />}
         <span>{busy ? "Reading invoice…" : "Scan an invoice"}</span>
+      </button>
+
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        className="rc-history-toggle"
+      >
+        <ImageIcon size={15} color="var(--text-2)" />
+        <span>Choose from photos instead</span>
       </button>
 
       {err && (
