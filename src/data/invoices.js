@@ -70,3 +70,7 @@ export const money = (n) =>
   typeof n === "number" && !Number.isNaN(n)
     ? n.toLocaleString("en-AU", { style: "currency", currency: "AUD" })
     : "—";
+
+export function hasScan(inv) {
+  return Boolean(inv && inv.hasScan);
+}    

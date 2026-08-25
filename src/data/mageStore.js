@@ -1,0 +1,40 @@
+const DB = "rc_scans";
+const STORE = "images";
+
+function open() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(STORE)) {
+        req.result.createObjectStore(STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function tx(mode, fn) {
+  const db = await open();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, mode);
+    const store = t.objectStore(STORE);
+    const r = fn(store);
+    t.oncomplete = () => resolve(r?.result);
+    t.onerror = () => reject(t.error);
+  });
+}
+
+export const putScan = (id, payload) => tx("readwrite", (s) => s.put(payload, id));
+export const getScan = (id) => tx("readonly", (s) => s.get(id));
+export const deleteScan = (id) => tx("readwrite", (s) => s.delete(id));
+export const clearScans = () => tx("readwrite", (s) => s.clear());
+
+export async function storageUsed() {
+  try {
+    const { usage, quota } = await navigator.storage.estimate();
+    return { usage, quota };
+  } catch {
+    return null;
+  }
+}

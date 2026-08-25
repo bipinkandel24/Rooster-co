@@ -1,28 +1,14 @@
 import React, { useState, useRef } from "react";
 import {
   Camera, Loader2, CheckCircle2, AlertTriangle, Trash2, Download,
-  ChevronRight, FileText, X, Receipt,
+  ChevronRight, FileText, X, Receipt, Mail, Eye, Send,
 } from "lucide-react";
 import {
   loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
   groupByWeek, weekLabel, money,
 } from "../data/invoices";
-
-// Shrink a phone photo so it fits inside the serverless payload limit
-async function compress(file, maxDim = 1600, quality = 0.8) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
-
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  return dataUrl.split(",")[1];
-}
+import { makeScan, makeThumbBase64 } from "../utils/scanFilter";
+import { putScan, getScan, deleteScan, clearScans } from "../data/imageStore";
 
 const emptyDraft = {
   supplier: "", abn: "", invoiceNumber: "", invoiceDate: "",
@@ -35,6 +21,9 @@ export default function InvoiceScanner({ onBack }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [openWeek, setOpenWeek] = useState(null);
+  const [viewing, setViewing] = useState(null);   // { id, dataUrl, inv }
+  const [sendingId, setSendingId] = useState(null);
+  const [toast, setToast] = useState("");
   const fileRef = useRef(null);
 
   const set = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
@@ -47,11 +36,15 @@ export default function InvoiceScanner({ onBack }) {
     setBusy(true);
     setErr("");
     try {
-      const image = await compress(file);
+      // Clean scanner-style image kept for the record
+      const scan = await makeScan(file);
+      // Lighter copy sent to the AI
+      const forAI = await makeThumbBase64(scan.dataUrl);
+
       const r = await fetch("/api/scan-invoice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image, mediaType: "image/jpeg" }),
+        body: JSON.stringify({ image: forAI, mediaType: "image/jpeg" }),
       });
       const d = await r.json();
       if (!d.ok) throw new Error(d.detail || d.error || "Scan failed");
@@ -66,6 +59,7 @@ export default function InvoiceScanner({ onBack }) {
         gst: d.data.gst ?? "",
         total: d.data.total ?? "",
         lineItems: d.data.lineItems || [],
+        _scanDataUrl: scan.dataUrl,
       });
     } catch (e) {
       setErr(e.message || "Couldn't read that invoice. Try a clearer photo.");
@@ -74,23 +68,82 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
+    const { _scanDataUrl, ...fields } = draft;
     const entry = saveInvoice({
-      ...draft,
+      ...fields,
       subtotal: draft.subtotal === "" ? null : Number(draft.subtotal),
       gst: draft.gst === "" ? null : Number(draft.gst),
       total: draft.total === "" ? null : Number(draft.total),
+      hasScan: Boolean(_scanDataUrl),
     });
-    if (entry) setInvoices((p) => [entry, ...p]);
+    if (entry) {
+      if (_scanDataUrl) {
+        try {
+          await putScan(entry.id, { dataUrl: _scanDataUrl });
+        } catch {
+          /* metadata is still saved even if the image couldn't be stored */
+        }
+      }
+      setInvoices((p) => [entry, ...p]);
+    }
     setDraft(null);
   };
 
-  const remove = (id) => setInvoices(deleteInvoice(id));
+  const remove = async (id) => {
+    await deleteScan(id).catch(() => {});
+    setInvoices(deleteInvoice(id));
+  };
 
-  const wipeAll = () => {
-    if (window.confirm("Delete all saved invoices? Export first if you need them.")) {
+  const wipeAll = async () => {
+    if (window.confirm("Delete all saved invoices and scans? Export first if you need them.")) {
+      await clearScans().catch(() => {});
       clearInvoices();
       setInvoices([]);
+    }
+  };
+
+  const openScan = async (inv) => {
+    try {
+      const rec = await getScan(inv.id);
+      if (!rec?.dataUrl) {
+        setToast("No scan saved for this invoice.");
+        setTimeout(() => setToast(""), 4000);
+        return;
+      }
+      setViewing({ id: inv.id, dataUrl: rec.dataUrl, inv });
+    } catch {
+      setToast("Couldn't open that scan.");
+      setTimeout(() => setToast(""), 4000);
+    }
+  };
+
+  const emailScan = async (inv) => {
+    setSendingId(inv.id);
+    setToast("");
+    try {
+      const rec = await getScan(inv.id);
+      if (!rec?.dataUrl) throw new Error("No scan saved");
+
+      const r = await fetch("/api/send-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: rec.dataUrl.split(",")[1],
+          supplier: inv.supplier,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          total: inv.total,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Send failed");
+      setToast(`Sent to ${d.sentTo}`);
+    } catch (e) {
+      setToast(e.message || "Couldn't send that scan.");
+    } finally {
+      setSendingId(null);
+      setTimeout(() => setToast(""), 4000);
     }
   };
 
@@ -156,6 +209,10 @@ export default function InvoiceScanner({ onBack }) {
             <div className="rc-stock-unit">Fix anything that's wrong before saving</div>
           </div>
         </div>
+
+        {draft._scanDataUrl && (
+          <img src={draft._scanDataUrl} alt="Scanned invoice" className="rc-scan-preview" />
+        )}
 
         {lowConf && (
           <div className="rc-urgent-note">
@@ -271,7 +328,7 @@ export default function InvoiceScanner({ onBack }) {
         className="rc-scan-btn"
       >
         {busy ? <Loader2 size={20} className="rc-spin" /> : <Camera size={20} />}
-        <span>{busy ? "Reading invoice…" : "Scan an invoice"}</span>
+        <span>{busy ? "Scanning…" : "Scan an invoice"}</span>
       </button>
 
       {err && (
@@ -321,12 +378,30 @@ export default function InvoiceScanner({ onBack }) {
                         <div className="rc-stock-unit">
                           {i.invoiceDate || "no date"}
                           {i.invoiceNumber ? ` · #${i.invoiceNumber}` : ""}
-                          {i.gst ? ` · GST ${money(i.gst)}` : ""}
+                          {i.total != null ? ` · ${money(i.total)}` : ""}
                         </div>
                       </div>
-                      <div className="rc-qty-value">{money(i.total)}</div>
-                      <button onClick={() => remove(i.id)} className="rc-check-btn" aria-label="Delete">
-                        <X size={16} color="var(--text-faint)" />
+
+                      {i.hasScan && (
+                        <>
+                          <button onClick={() => openScan(i)} className="rc-icon-btn" aria-label="View scan">
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => emailScan(i)}
+                            disabled={sendingId === i.id}
+                            className="rc-icon-btn rc-icon-mail"
+                            aria-label="Email scan"
+                          >
+                            {sendingId === i.id
+                              ? <Loader2 size={16} className="rc-spin" />
+                              : <Mail size={16} />}
+                          </button>
+                        </>
+                      )}
+
+                      <button onClick={() => remove(i.id)} className="rc-icon-btn" aria-label="Delete">
+                        <X size={16} />
                       </button>
                     </div>
                   ))}
@@ -354,6 +429,49 @@ export default function InvoiceScanner({ onBack }) {
         <button onClick={wipeAll} className="rc-history-clear">
           <Trash2 size={13} /> Clear all invoices
         </button>
+      )}
+
+      {toast && <div className="rc-toast">{toast}</div>}
+
+      {viewing && (
+        <div className="rc-scan-modal" onClick={() => setViewing(null)}>
+          <div className="rc-scan-modal-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="rc-chat-header">
+              <div>
+                <div className="rc-chat-title">{viewing.inv.supplier || "Invoice"}</div>
+                <div className="rc-chat-sub">
+                  {viewing.inv.invoiceDate || "no date"}
+                  {viewing.inv.invoiceNumber ? ` · #${viewing.inv.invoiceNumber}` : ""}
+                </div>
+              </div>
+              <button onClick={() => setViewing(null)} className="rc-close-btn" aria-label="Close">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="rc-scan-modal-body">
+              <img src={viewing.dataUrl} alt="Scanned invoice" />
+            </div>
+
+            <div style={{ padding: 14 }}>
+              <button
+                onClick={() => emailScan(viewing.inv)}
+                disabled={sendingId === viewing.id}
+                className="rc-submit-btn rc-submit-active"
+              >
+                <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                {sendingId === viewing.id ? "Sending…" : "Email this scan"}
+              </button>
+              <a
+                href={viewing.dataUrl}
+                download={`invoice-${viewing.inv.invoiceNumber || viewing.id}.jpg`}
+                className="rc-portal-link"
+              >
+                Download image
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
