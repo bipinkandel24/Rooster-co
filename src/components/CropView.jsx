@@ -1,51 +1,75 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { Check, RotateCcw, Maximize2, X, Scan } from "lucide-react";
 import { warpToRect } from "../utils/perspective";
 import { enhanceCanvas } from "../utils/scanFilter";
 import { detectDocument } from "../utils/detectEdges";
 
+const inset = (canvas) => {
+  const ix = canvas.width * 0.08;
+  const iy = canvas.height * 0.08;
+  return [
+    { x: ix, y: iy },
+    { x: canvas.width - ix, y: iy },
+    { x: canvas.width - ix, y: canvas.height - iy },
+    { x: ix, y: canvas.height - iy },
+  ];
+};
+
 export default function CropView({ canvas, onDone, onCancel }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
-  const [display, setDisplay] = useState({ w: 0, h: 0, scale: 1 });
-  const [corners, setCorners] = useState(null);
+  const [display, setDisplay] = useState({ w: 0, h: 0, scale: 0 });
+  // Never null — otherwise the early return stops the ref from ever attaching
+  const [corners, setCorners] = useState(() => inset(canvas));
   const [dragging, setDragging] = useState(null);
   const [detected, setDetected] = useState(false);
 
-  const insetCorners = useCallback(() => {
-    const ix = canvas.width * 0.08;
-    const iy = canvas.height * 0.08;
-    return [
-      { x: ix, y: iy },
-      { x: canvas.width - ix, y: iy },
-      { x: canvas.width - ix, y: canvas.height - iy },
-      { x: ix, y: canvas.height - iy },
-    ];
+  const insetCorners = useCallback(() => inset(canvas), [canvas]);
+
+  // Measure after layout, retrying until the container has a real width
+  useLayoutEffect(() => {
+    let raf = 0;
+
+    const measure = () => {
+      const wrap = wrapRef.current;
+      if (!wrap || !canvas?.width) return;
+
+      const avail = wrap.clientWidth;
+      if (!avail) {
+        raf = requestAnimationFrame(measure);
+        return;
+      }
+      const scale = avail / canvas.width;
+      setDisplay({ w: avail, h: Math.round(canvas.height * scale), scale });
+    };
+
+    measure();
+
+    const onResize = () => measure();
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
   }, [canvas]);
 
-  // Fit the photo, show manual corners immediately, then try detection
+  // Try to find the paper once the photo is on screen
   useEffect(() => {
-    const wrap = wrapRef.current;
-    if (!wrap || !canvas) return;
-
-    const avail = wrap.clientWidth;
-    const scale = avail / canvas.width;
-    setDisplay({ w: avail, h: Math.round(canvas.height * scale), scale });
-
-    // Never block the UI on detection — the manual rectangle shows straight away
-    setCorners(insetCorners());
-
+    if (!display.w) return;
     const t = setTimeout(() => {
-      const started = performance.now();
-      const found = detectDocument(canvas);
-      if (found && performance.now() - started < 3000) {
-        setCorners(found);
-        setDetected(true);
+      try {
+        const started = performance.now();
+        const found = detectDocument(canvas);
+        if (found && performance.now() - started < 3000) {
+          setCorners(found);
+          setDetected(true);
+        }
+      } catch {
+        /* keep the manual corners */
       }
-    }, 50);
-
+    }, 60);
     return () => clearTimeout(t);
-  }, [canvas, insetCorners]);
+  }, [canvas, display.w]);
 
   // Paint the photo into the visible canvas
   useEffect(() => {
@@ -74,7 +98,7 @@ export default function CropView({ canvas, onDone, onCancel }) {
   };
 
   useEffect(() => {
-    if (dragging === null) return;
+    if (dragging === null || !display.scale) return;
 
     const move = (e) => {
       e.preventDefault();
@@ -102,17 +126,21 @@ export default function CropView({ canvas, onDone, onCancel }) {
       window.removeEventListener("mouseup", end);
       window.removeEventListener("touchend", end);
     };
-  }, [dragging, pointFromEvent, canvas]);
+  }, [dragging, pointFromEvent, canvas, display.scale]);
 
   const redetect = () => {
-    const found = detectDocument(canvas);
-    if (found) {
-      setCorners(found);
-      setDetected(true);
-    } else {
-      setCorners(insetCorners());
-      setDetected(false);
+    try {
+      const found = detectDocument(canvas);
+      if (found) {
+        setCorners(found);
+        setDetected(true);
+        return;
+      }
+    } catch {
+      /* fall through */
     }
+    setCorners(insetCorners());
+    setDetected(false);
   };
 
   const reset = () => {
@@ -131,18 +159,21 @@ export default function CropView({ canvas, onDone, onCancel }) {
   };
 
   const apply = () => {
-    const warped = warpToRect(canvas, corners);
-    if (!warped) return;
-    const { dataUrl } = enhanceCanvas(warped);
-    onDone(dataUrl);
+    try {
+      const warped = warpToRect(canvas, corners);
+      if (!warped) return;
+      const { dataUrl } = enhanceCanvas(warped);
+      onDone(dataUrl);
+    } catch {
+      // Fall back to the uncropped photo rather than losing the scan
+      onDone(canvas.toDataURL("image/jpeg", 0.82));
+    }
   };
 
-  if (!corners) return null;
-
-  const pts = corners.map((c) => ({
-    x: c.x * display.scale,
-    y: c.y * display.scale,
-  }));
+  const ready = display.w > 0 && display.scale > 0;
+  const pts = ready
+    ? corners.map((c) => ({ x: c.x * display.scale, y: c.y * display.scale }))
+    : [];
   const poly = pts.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
@@ -160,34 +191,43 @@ export default function CropView({ canvas, onDone, onCancel }) {
         </div>
       </div>
 
-      <div ref={wrapRef} className="rc-crop-wrap" style={{ height: display.h }}>
-        <canvas ref={canvasRef} className="rc-crop-canvas" />
+      {/* The wrap always renders so the ref can attach and be measured */}
+      <div
+        ref={wrapRef}
+        className="rc-crop-wrap"
+        style={{ height: ready ? display.h : 220 }}
+      >
+        {ready && (
+          <>
+            <canvas ref={canvasRef} className="rc-crop-canvas" />
 
-        <svg className="rc-crop-overlay" width={display.w} height={display.h}>
-          <defs>
-            <mask id="rc-hole">
-              <rect width={display.w} height={display.h} fill="white" />
-              <polygon points={poly} fill="black" />
-            </mask>
-          </defs>
-          <rect
-            width={display.w}
-            height={display.h}
-            fill="rgba(0,0,0,0.55)"
-            mask="url(#rc-hole)"
-          />
-          <polygon points={poly} fill="none" stroke="#D9662C" strokeWidth="2" />
-        </svg>
+            <svg className="rc-crop-overlay" width={display.w} height={display.h}>
+              <defs>
+                <mask id="rc-hole">
+                  <rect width={display.w} height={display.h} fill="white" />
+                  <polygon points={poly} fill="black" />
+                </mask>
+              </defs>
+              <rect
+                width={display.w}
+                height={display.h}
+                fill="rgba(0,0,0,0.55)"
+                mask="url(#rc-hole)"
+              />
+              <polygon points={poly} fill="none" stroke="#D9662C" strokeWidth="2" />
+            </svg>
 
-        {pts.map((p, i) => (
-          <div
-            key={i}
-            className={`rc-crop-handle ${dragging === i ? "rc-crop-handle-on" : ""}`}
-            style={{ left: p.x, top: p.y }}
-            onMouseDown={start(i)}
-            onTouchStart={start(i)}
-          />
-        ))}
+            {pts.map((p, i) => (
+              <div
+                key={i}
+                className={`rc-crop-handle ${dragging === i ? "rc-crop-handle-on" : ""}`}
+                style={{ left: p.x, top: p.y }}
+                onMouseDown={start(i)}
+                onTouchStart={start(i)}
+              />
+            ))}
+          </>
+        )}
       </div>
 
       <div className="rc-crop-actions">
@@ -205,7 +245,7 @@ export default function CropView({ canvas, onDone, onCancel }) {
         </button>
       </div>
 
-      <button onClick={apply} className="rc-submit-btn rc-submit-active">
+      <button onClick={apply} disabled={!ready} className={`rc-submit-btn ${ready ? "rc-submit-active" : ""}`}>
         <Check size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
         Scan this area
       </button>
