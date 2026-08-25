@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar, Receipt } from "lucide-react";
+import { Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar, Receipt, Boxes } from "lucide-react";
 import InvoiceScanner from "./InvoiceScanner";
+import StockTake from "./StockTake";
 
 export default function ManagementPortal({ onBack, onLogout, onSessionExpired }) {
   const [staffId, setStaffId] = useState(null);
   const [staff, setStaff] = useState([]);
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [showInvoices, setShowInvoices] = useState(false);
+  const [showStock, setShowStock] = useState(false);
 
   // Staff records live on the server and are fetched against the session
   // cookie, so they never sit in the JS bundle for anyone to read.
@@ -50,9 +52,13 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
 
   const telHref = (n) => "tel:" + String(n || "").replace(/\s/g, "");
 
-  // ---------- Invoice scanner ----------
+  // ---------- Sub-sections ----------
   if (showInvoices) {
     return <InvoiceScanner onBack={() => setShowInvoices(false)} />;
+  }
+
+  if (showStock) {
+    return <StockTake onBack={() => setShowStock(false)} />;
   }
 
   // ---------- Staff detail ----------
@@ -142,20 +148,29 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
         <h2 className="rc-detail-title">Management</h2>
       </div>
 
-      <button
-        onClick={() => setShowInvoices(true)}
-        className="rc-menu-item"
-        style={{ marginBottom: 22 }}
-      >
-        <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
-          <Receipt size={19} color="var(--gold)" />
-        </div>
-        <div className="rc-stock-info">
-          <div className="rc-stock-label">Invoices</div>
-          <div className="rc-stock-unit">Scan and export weekly</div>
-        </div>
-        <ChevronRight size={17} color="var(--text-3)" />
-      </button>
+      <div className="rc-stock-list" style={{ marginBottom: 22 }}>
+        <button onClick={() => setShowStock(true)} className="rc-menu-item">
+          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
+            <Boxes size={19} color="var(--gold)" />
+          </div>
+          <div className="rc-stock-info">
+            <div className="rc-stock-label">Stocktake</div>
+            <div className="rc-stock-unit">Weekly count, value and order list</div>
+          </div>
+          <ChevronRight size={17} color="var(--text-3)" />
+        </button>
+
+        <button onClick={() => setShowInvoices(true)} className="rc-menu-item">
+          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
+            <Receipt size={19} color="var(--gold)" />
+          </div>
+          <div className="rc-stock-info">
+            <div className="rc-stock-label">Invoices</div>
+            <div className="rc-stock-unit">Scan and export weekly</div>
+          </div>
+          <ChevronRight size={17} color="var(--text-3)" />
+        </button>
+      </div>
 
       <div className="rc-checklist-heading">
         Staff
