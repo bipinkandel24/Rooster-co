@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  Sunrise, CheckCircle2, Circle, AlertTriangle, RotateCcw, Send, X, Check,
+  Sunrise, CheckCircle2, Circle, AlertTriangle, RotateCcw, X, Check, ListChecks,
 } from "lucide-react";
 import {
   MORNING_SECTIONS, ALL_TASKS, SHIFT, loadMorning, saveMorning,
@@ -10,8 +10,6 @@ import {
 export default function MorningFoh({ onBack }) {
   const [state, setState] = useState(() => loadMorning());
   const [showIncomplete, setShowIncomplete] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
 
   useEffect(() => {
     saveMorning(state);
@@ -26,8 +24,16 @@ export default function MorningFoh({ onBack }) {
   const toggle = (key) =>
     setState((p) => ({ ...p, done: { ...p.done, [key]: !p.done[key] } }));
 
-  const resetDay = () =>
-    setState({ date: new Date().toLocaleDateString("en-CA"), done: {}, by: state.by, finishedAt: null });
+  const resetDay = () => {
+    if (doneCount > 0 && !window.confirm("Clear all ticks and start the list again?")) return;
+    setState({
+      date: new Date().toLocaleDateString("en-CA"),
+      done: {},
+      by: "",
+      finishedAt: null,
+    });
+    setShowIncomplete(false);
+  };
 
   const sectionStats = useMemo(
     () =>
@@ -38,38 +44,6 @@ export default function MorningFoh({ onBack }) {
       }),
     [state.done]
   );
-
-  const submit = async () => {
-    if (remaining.length > 0 && !showIncomplete) {
-      setShowIncomplete(true);
-      return;
-    }
-    setSending(true);
-    try {
-      const done = ALL_TASKS.filter((t) => state.done[t.key]).map((t) => t.label);
-      const missed = remaining.map((t) => t.label);
-
-      await fetch("/api/send-cleaning", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          area: "Morning FOH Setup",
-          staffName: state.by || "Unknown",
-          done,
-          missed,
-          total,
-        }),
-      });
-      setState((p) => ({ ...p, finishedAt: new Date().toISOString() }));
-      setSent(true);
-      setShowIncomplete(false);
-    } catch {
-      setState((p) => ({ ...p, finishedAt: new Date().toISOString() }));
-      setSent(true);
-    } finally {
-      setSending(false);
-    }
-  };
 
   // Circular progress ring
   const R = 46;
@@ -147,6 +121,13 @@ export default function MorningFoh({ onBack }) {
         </div>
       )}
 
+      {remaining.length > 0 && (
+        <button onClick={() => setShowIncomplete(true)} className="rc-history-toggle">
+          <ListChecks size={15} color="var(--text-2)" />
+          <span>Show what's left ({remaining.length})</span>
+        </button>
+      )}
+
       {/* Sections */}
       {MORNING_SECTIONS.map((s) => {
         const stat = sectionStats.find((x) => x.id === s.id);
@@ -178,44 +159,27 @@ export default function MorningFoh({ onBack }) {
         );
       })}
 
-      <div className="rc-field" style={{ marginTop: 8 }}>
-        <label className="rc-field-label">Completed by</label>
-        <input
-          className="rc-field-input"
-          value={state.by}
-          onChange={(e) => setState((p) => ({ ...p, by: e.target.value }))}
-          placeholder="Your name"
-        />
-      </div>
-
-      {sent ? (
-        <div className="rc-sent-banner">
-          <CheckCircle2 size={16} color="var(--ok-text)" />
-          <span>Sent to management. Thanks {state.by || ""}!</span>
-        </div>
-      ) : (
-        <button
-          onClick={submit}
-          disabled={sending || !state.by.trim()}
-          className={`rc-submit-btn ${state.by.trim() && !sending ? "rc-submit-active" : ""}`}
-        >
-          <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-          {sending ? "Sending…" : `Submit (${doneCount}/${total})`}
-        </button>
-      )}
-
-      <button onClick={resetDay} className="rc-history-clear">
-        <RotateCcw size={13} /> Reset today's list
+      <button
+        onClick={resetDay}
+        className={`rc-submit-btn ${doneCount > 0 ? "rc-submit-active" : ""}`}
+        disabled={doneCount === 0}
+      >
+        <RotateCcw size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+        Reset list
       </button>
 
-      {/* Incomplete reminder */}
+      <div className="rc-chat-disclaimer" style={{ marginTop: 12 }}>
+        The list clears itself each morning.
+      </div>
+
+      {/* What's outstanding */}
       {showIncomplete && (
         <div className="rc-scan-modal" onClick={() => setShowIncomplete(false)}>
           <div className="rc-scan-modal-inner" onClick={(e) => e.stopPropagation()}>
             <div className="rc-chat-header">
               <div>
                 <div className="rc-chat-title">{remaining.length} still to do</div>
-                <div className="rc-chat-sub">Tap one to jump back, or submit anyway</div>
+                <div className="rc-chat-sub">Tap to tick them off here</div>
               </div>
               <button onClick={() => setShowIncomplete(false)} className="rc-close-btn">
                 <X size={16} />
@@ -225,11 +189,7 @@ export default function MorningFoh({ onBack }) {
             <div className="rc-scan-modal-body" style={{ background: "var(--bg-panel)" }}>
               <div className="rc-checklist-items">
                 {remaining.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => toggle(t.key)}
-                    className="rc-checklist-item"
-                  >
+                  <button key={t.key} onClick={() => toggle(t.key)} className="rc-checklist-item">
                     <Circle size={20} color="var(--danger-soft)" style={{ flexShrink: 0 }} />
                     <span>{t.label}</span>
                   </button>
@@ -243,10 +203,7 @@ export default function MorningFoh({ onBack }) {
                 className="rc-submit-btn rc-submit-active"
               >
                 <Check size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-                Go finish them
-              </button>
-              <button onClick={submit} className="rc-history-clear">
-                Submit incomplete anyway
+                Done
               </button>
             </div>
           </div>
