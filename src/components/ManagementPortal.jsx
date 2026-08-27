@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar, Receipt, Boxes, TrendingUp } from "lucide-react";
+import {
+  Users, Phone, Mail, ChevronRight, LogOut, Shield, Calendar,
+  Receipt, Boxes, TrendingUp, CalendarDays,
+} from "lucide-react";
 import InvoiceScanner from "./InvoiceScanner";
 import StockTake from "./StockTake";
 import WeeklyPnl from "./WeeklyPnl";
+import Roster from "./Roster";
 
 export default function ManagementPortal({ onBack, onLogout, onSessionExpired }) {
   const [staffId, setStaffId] = useState(null);
@@ -11,6 +15,7 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
   const [showInvoices, setShowInvoices] = useState(false);
   const [showStock, setShowStock] = useState(false);
   const [showPnl, setShowPnl] = useState(false);
+  const [showRoster, setShowRoster] = useState(false);
 
   // Staff records live on the server and are fetched against the session
   // cookie, so they never sit in the JS bundle for anyone to read.
@@ -55,6 +60,10 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
   const telHref = (n) => "tel:" + String(n || "").replace(/\s/g, "");
 
   // ---------- Sub-sections ----------
+  if (showRoster) {
+    return <Roster onBack={() => setShowRoster(false)} onSessionExpired={onSessionExpired} />;
+  }
+
   if (showPnl) {
     return <WeeklyPnl onBack={() => setShowPnl(false)} />;
   }
@@ -162,6 +171,17 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
           <div className="rc-stock-info">
             <div className="rc-stock-label">Weekly P&amp;L</div>
             <div className="rc-stock-unit">Sales, COGS, labour and profit</div>
+          </div>
+          <ChevronRight size={17} color="var(--text-3)" />
+        </button>
+
+        <button onClick={() => setShowRoster(true)} className="rc-menu-item">
+          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
+            <CalendarDays size={19} color="var(--gold)" />
+          </div>
+          <div className="rc-stock-info">
+            <div className="rc-stock-label">Roster</div>
+            <div className="rc-stock-unit">Weekly shifts, hours and sharing</div>
           </div>
           <ChevronRight size={17} color="var(--text-3)" />
         </button>

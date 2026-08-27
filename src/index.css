@@ -1010,3 +1010,47 @@ select.rc-field-input { appearance: none; cursor: pointer; }
 .rc-morning-bar-count {
   font-size: 10px; color: var(--text-3); width: 30px; text-align: right; flex-shrink: 0;
 }
+
+.rc-roster-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 8px; }
+.rc-roster { border-collapse: collapse; width: 100%; font-size: 12px; }
+.rc-roster th {
+  padding: 6px 3px; color: var(--text-2); font-weight: 600; font-size: 10.5px;
+  text-align: center; border-bottom: 1px solid var(--border);
+}
+.rc-roster-date { font-size: 9px; color: var(--text-faint); font-weight: 400; }
+.rc-roster td { padding: 3px 2px; text-align: center; }
+.rc-roster-name-col {
+  text-align: left !important; font-size: 12px; font-weight: 500;
+  min-width: 74px; max-width: 90px; padding-right: 8px !important;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rc-roster-cell {
+  width: 100%; min-width: 46px; min-height: 40px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-3); font-size: 9.5px;
+  font-family: inherit; cursor: pointer; padding: 4px 2px;
+}
+.rc-roster-on {
+  background: var(--bg-press); border-color: var(--accent);
+  color: var(--text); font-weight: 600;
+}
+.rc-roster-off { color: var(--text-faint); font-size: 14px; }
+.rc-roster-hours { font-size: 11px; font-weight: 600; color: var(--text-2); }
+
+.rc-preset-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.rc-preset-btn {
+  flex: 1 1 30%; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 6px; color: var(--text); font-size: 12.5px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.rc-preset-btn:active { background: var(--bg-press); }
+.rc-preset-time { font-size: 9.5px; color: var(--text-3); font-weight: 400; }
+
+.rc-roster-preview {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; font-size: 12px; line-height: 1.6; color: var(--text-body);
+  white-space: pre-wrap; font-family: ui-monospace, monospace;
+  overflow-x: auto; margin-bottom: 14px;
+}
