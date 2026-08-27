@@ -60,20 +60,20 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
   const telHref = (n) => "tel:" + String(n || "").replace(/\s/g, "");
 
   // ---------- Sub-sections ----------
-  if (showRoster) {
-    return <Roster onBack={() => setShowRoster(false)} onSessionExpired={onSessionExpired} />;
-  }
-
-  if (showPnl) {
-    return <WeeklyPnl onBack={() => setShowPnl(false)} />;
+  if (showInvoices) {
+    return <InvoiceScanner onBack={() => setShowInvoices(false)} />;
   }
 
   if (showStock) {
     return <StockTake onBack={() => setShowStock(false)} />;
   }
 
-  if (showInvoices) {
-    return <InvoiceScanner onBack={() => setShowInvoices(false)} />;
+  if (showPnl) {
+    return <WeeklyPnl onBack={() => setShowPnl(false)} />;
+  }
+
+  if (showRoster) {
+    return <Roster onBack={() => setShowRoster(false)} onSessionExpired={onSessionExpired} />;
   }
 
   // ---------- Staff detail ----------
@@ -164,6 +164,28 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
       </div>
 
       <div className="rc-stock-list" style={{ marginBottom: 22 }}>
+        <button onClick={() => setShowInvoices(true)} className="rc-menu-item">
+          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
+            <Receipt size={19} color="var(--gold)" />
+          </div>
+          <div className="rc-stock-info">
+            <div className="rc-stock-label">Invoices</div>
+            <div className="rc-stock-unit">Scan and export weekly</div>
+          </div>
+          <ChevronRight size={17} color="var(--text-3)" />
+        </button>
+
+        <button onClick={() => setShowStock(true)} className="rc-menu-item">
+          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
+            <Boxes size={19} color="var(--gold)" />
+          </div>
+          <div className="rc-stock-info">
+            <div className="rc-stock-label">Stocktake</div>
+            <div className="rc-stock-unit">Weekly count, value and order list</div>
+          </div>
+          <ChevronRight size={17} color="var(--text-3)" />
+        </button>
+
         <button onClick={() => setShowPnl(true)} className="rc-menu-item">
           <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
             <TrendingUp size={19} color="var(--gold)" />
@@ -182,28 +204,6 @@ export default function ManagementPortal({ onBack, onLogout, onSessionExpired })
           <div className="rc-stock-info">
             <div className="rc-stock-label">Roster</div>
             <div className="rc-stock-unit">Weekly shifts, hours and sharing</div>
-          </div>
-          <ChevronRight size={17} color="var(--text-3)" />
-        </button>
-
-        <button onClick={() => setShowStock(true)} className="rc-menu-item">
-          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
-            <Boxes size={19} color="var(--gold)" />
-          </div>
-          <div className="rc-stock-info">
-            <div className="rc-stock-label">Stocktake</div>
-            <div className="rc-stock-unit">Weekly count, value and order list</div>
-          </div>
-          <ChevronRight size={17} color="var(--text-3)" />
-        </button>
-
-        <button onClick={() => setShowInvoices(true)} className="rc-menu-item">
-          <div className="rc-module-icon" style={{ background: "var(--bg-press)" }}>
-            <Receipt size={19} color="var(--gold)" />
-          </div>
-          <div className="rc-stock-info">
-            <div className="rc-stock-label">Invoices</div>
-            <div className="rc-stock-unit">Scan and export weekly</div>
           </div>
           <ChevronRight size={17} color="var(--text-3)" />
         </button>
