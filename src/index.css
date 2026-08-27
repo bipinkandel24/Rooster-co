@@ -972,3 +972,41 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   justify-content: center;
   margin-bottom: 16px;
 }
+
+.rc-morning-card {
+  display: block; width: 100%; text-align: left;
+  background: linear-gradient(135deg, #C8702A 0%, #E3A94A 100%);
+  border: none; border-radius: 16px;
+  padding: 18px 18px 20px; margin-bottom: 12px;
+  color: #2A241D; cursor: pointer; font-family: inherit;
+}
+.rc-morning-card .rc-prep-card-title { color: #2A241D; }
+.rc-morning-card .rc-prep-card-sub { color: #4A3D2E; opacity: 0.9; }
+
+.rc-morning-hero {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px; margin-bottom: 18px;
+}
+.rc-ring { flex-shrink: 0; }
+.rc-ring-num {
+  font-family: "Fraunces", serif; font-size: 22px; font-weight: 700;
+  fill: var(--text);
+}
+.rc-ring-sub { font-size: 11px; fill: var(--text-2); }
+
+.rc-morning-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.rc-morning-bar-row { display: flex; align-items: center; gap: 8px; }
+.rc-morning-bar-label {
+  font-size: 10.5px; color: var(--text-2);
+  width: 78px; flex-shrink: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rc-morning-bar {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: var(--border); overflow: hidden;
+}
+.rc-morning-bar-fill { height: 100%; border-radius: 3px; transition: width .3s ease; }
+.rc-morning-bar-count {
+  font-size: 10px; color: var(--text-3); width: 30px; text-align: right; flex-shrink: 0;
+}

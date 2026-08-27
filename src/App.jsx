@@ -10,6 +10,7 @@ import ModuleDetail from "./components/ModuleDetail";
 import VideoPlayer from "./components/VideoPlayer";
 import CleaningSection from "./components/CleaningSection";
 import DailyPrep from "./components/DailyPrep";
+import MorningFoh from "./components/MorningFoh";
 import OrderPortal from "./components/OrderPortal";
 import OwnerGate from "./components/OwnerGate";
 import ManagementPortal from "./components/ManagementPortal";
@@ -41,6 +42,7 @@ export default function App() {
   const [openId, setOpenId] = useState(null);
   const [playingVideo, setPlayingVideo] = useState(null);
   const [showPrep, setShowPrep] = useState(false);
+  const [showMorning, setShowMorning] = useState(false);
 
   // Cleaning: two independent areas, each with its own name + progress
   const [cleaningArea, setCleaningArea] = useState(null);
@@ -91,7 +93,7 @@ export default function App() {
   const otherKitchenMods = kitchenMods.filter((m) => !DAILY_PREP_IDS.includes(m.id));
 
   const ownerArea = showOrders || showMgmt;
-  const hidden = ownerArea || showIncident || showTemps || showPrep;
+  const hidden = ownerArea || showIncident || showTemps || showPrep || showMorning;
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -110,6 +112,7 @@ export default function App() {
     setShowIncident(false);
     setShowTemps(false);
     setShowPrep(false);
+    setShowMorning(false);
   };
 
   const toggleItem = (modId, idx) => {
@@ -212,6 +215,9 @@ export default function App() {
           </button>
         </div>
 
+        {/* MORNING FOH SETUP — every morning, 9:30–10:30 */}
+        {showMorning && <MorningFoh onBack={() => setShowMorning(false)} />}
+
         {/* DAILY PREP — flattened checklist, videos behind a code */}
         {showPrep && (
           <DailyPrep
@@ -263,6 +269,13 @@ export default function App() {
           <>
             <Header eyebrow="Home" title="Kitchen" Icon={ChefHat} />
             <div className="rc-scroll-area">
+              <button onClick={() => setShowMorning(true)} className="rc-morning-card">
+                <div className="rc-prep-card-title">Morning Setup</div>
+                <div className="rc-prep-card-sub">
+                  FOH open · 9:30–10:30 · every morning
+                </div>
+              </button>
+
               <button onClick={() => setShowPrep(true)} className="rc-prep-card">
                 <div className="rc-prep-card-title">Daily Prep</div>
                 <div className="rc-prep-card-sub">
