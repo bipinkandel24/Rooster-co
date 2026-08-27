@@ -269,14 +269,6 @@ export default function App() {
           <>
             <Header eyebrow="Home" title="Kitchen" Icon={ChefHat} />
             <div className="rc-scroll-area">
-              <TodayCard
-                prepMods={prepMods}
-                onMorning={() => setShowMorning(true)}
-                onPrep={() => setShowPrep(true)}
-                onTemps={() => setShowTemps(true)}
-                onOrders={openOrders}
-              />
-
               <button onClick={() => setShowMorning(true)} className="rc-morning-card">
                 <div className="rc-prep-card-title">Morning Setup</div>
                 <div className="rc-prep-card-sub">
@@ -290,6 +282,14 @@ export default function App() {
                   Hot food, salads, sauces — everything before service
                 </div>
               </button>
+
+              <TodayCard
+                prepMods={prepMods}
+                onMorning={() => setShowMorning(true)}
+                onPrep={() => setShowPrep(true)}
+                onTemps={() => setShowTemps(true)}
+                onOrders={openOrders}
+              />
             </div>
           </>
         )}
