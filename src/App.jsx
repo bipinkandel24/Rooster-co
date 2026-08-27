@@ -11,6 +11,7 @@ import VideoPlayer from "./components/VideoPlayer";
 import CleaningSection from "./components/CleaningSection";
 import DailyPrep from "./components/DailyPrep";
 import MorningFoh from "./components/MorningFoh";
+import TodayCard from "./components/TodayCard";
 import OrderPortal from "./components/OrderPortal";
 import OwnerGate from "./components/OwnerGate";
 import ManagementPortal from "./components/ManagementPortal";
@@ -90,7 +91,6 @@ export default function App() {
 
   // Daily prep pulls its modules out of the normal kitchen list
   const prepMods = kitchenMods.filter((m) => DAILY_PREP_IDS.includes(m.id));
-  const otherKitchenMods = kitchenMods.filter((m) => !DAILY_PREP_IDS.includes(m.id));
 
   const ownerArea = showOrders || showMgmt;
   const hidden = ownerArea || showIncident || showTemps || showPrep || showMorning;
@@ -269,6 +269,14 @@ export default function App() {
           <>
             <Header eyebrow="Home" title="Kitchen" Icon={ChefHat} />
             <div className="rc-scroll-area">
+              <TodayCard
+                prepMods={prepMods}
+                onMorning={() => setShowMorning(true)}
+                onPrep={() => setShowPrep(true)}
+                onTemps={() => setShowTemps(true)}
+                onOrders={openOrders}
+              />
+
               <button onClick={() => setShowMorning(true)} className="rc-morning-card">
                 <div className="rc-prep-card-title">Morning Setup</div>
                 <div className="rc-prep-card-sub">
@@ -282,10 +290,6 @@ export default function App() {
                   Hot food, salads, sauces — everything before service
                 </div>
               </button>
-
-              {otherKitchenMods.map((m) => (
-                <ModuleRow key={m.id} mod={m} onOpen={(mod) => setOpenId(mod.id)} />
-              ))}
             </div>
           </>
         )}
