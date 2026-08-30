@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import {
   Camera, Loader2, CheckCircle2, AlertTriangle, Trash2, Download,
   ChevronRight, FileText, X, Receipt, Mail, Eye, Send, Image as ImageIcon,
-  MailPlus, FileDown,
+  MailPlus, FileDown, Share2,
 } from "lucide-react";
 import {
   loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
@@ -30,8 +30,6 @@ export default function InvoiceScanner({ onBack }) {
   const [viewing, setViewing] = useState(null);   // { id, dataUrl, inv }
   const [sendingId, setSendingId] = useState(null);
   const [toast, setToast] = useState("");
-  const [emailTo, setEmailTo] = useState(null);   // invoice, or { batch, key }
-  const [customAddr, setCustomAddr] = useState("");
   const [building, setBuilding] = useState("");
   const fileRef = useRef(null);
 
@@ -137,7 +135,7 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Send one scan to the default (accountant) address
+  // Gold button — straight to the usual address, no typing
   const emailScan = async (inv) => {
     setSendingId(inv.id);
     setToast("");
@@ -166,33 +164,41 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Send one scan to an address the user types in
-  const emailScanTo = async (inv, address) => {
+  // Teal button — open the phone's share sheet with the file attached,
+  // so you can pick Gmail and type any address yourself.
+  const shareScan = async (inv) => {
     setSendingId(inv.id);
-    setToast("");
     try {
       const rec = await getScan(inv.id);
       if (!rec?.dataUrl) throw new Error("No scan saved");
 
-      const r = await fetch("/api/send-scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: address,
-          image: rec.dataUrl.split(",")[1],
-          supplier: inv.supplier,
-          invoiceNumber: inv.invoiceNumber,
-          invoiceDate: inv.invoiceDate,
-          total: inv.total,
-        }),
-      });
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error || "Send failed");
-      flash(`Sent to ${d.sentTo}`);
-      setEmailTo(null);
-      setCustomAddr("");
+      const blob = await (await fetch(rec.dataUrl)).blob();
+      const name = `${(inv.supplier || "invoice").replace(/[^a-zA-Z0-9]/g, "_")}-${inv.invoiceNumber || inv.invoiceDate || inv.id}.jpg`;
+      const file = new File([blob], name, { type: "image/jpeg" });
+
+      const subject = `Invoice — ${inv.supplier || ""}${inv.invoiceNumber ? ` #${inv.invoiceNumber}` : ""}`;
+      const body = [
+        inv.supplier ? `Supplier: ${inv.supplier}` : null,
+        inv.invoiceNumber ? `Invoice no: ${inv.invoiceNumber}` : null,
+        inv.invoiceDate ? `Date: ${inv.invoiceDate}` : null,
+        inv.total != null ? `Total: ${money(inv.total)}` : null,
+      ].filter(Boolean).join("\n");
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: subject, text: body });
+      } else {
+        const a = document.createElement("a");
+        a.href = rec.dataUrl;
+        a.download = name;
+        a.click();
+        setTimeout(() => {
+          window.location.href =
+            `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body + "\n\n(attach the downloaded image)")}`;
+        }, 600);
+        flash("Image downloaded — attach it in your mail app.");
+      }
     } catch (e) {
-      flash(e.message || "Couldn't send that scan.");
+      if (e.name !== "AbortError") flash("Couldn't share that scan.");
     } finally {
       setSendingId(null);
     }
@@ -262,26 +268,26 @@ export default function InvoiceScanner({ onBack }) {
     if (built) built.doc.save(filename);
   };
 
-  const emailPdf = async (rows, filename, label, address, subject) => {
+  const sharePdf = async (rows, filename, label) => {
     const built = await buildPdf(rows, label);
     if (!built) return;
-    setSendingId("pdf");
     try {
-      const base64 = built.doc.output("datauristring").split(",")[1];
-      const r = await fetch("/api/send-scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: address, pdf: base64, filename, subject }),
-      });
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error || "Send failed");
-      flash(`Sent ${built.count} scans to ${d.sentTo}`, 5000);
-      setEmailTo(null);
-      setCustomAddr("");
+      const blob = built.doc.output("blob");
+      const file = new File([blob], filename, { type: "application/pdf" });
+      const title = `Rooster & Co invoices — ${built.count} scans`;
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title });
+      } else {
+        built.doc.save(filename);
+        setTimeout(() => {
+          window.location.href =
+            `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Invoices attached.")}`;
+        }, 600);
+        flash("PDF downloaded — attach it in your mail app.");
+      }
     } catch (e) {
-      flash(e.message || "Couldn't send the PDF.");
-    } finally {
-      setSendingId(null);
+      if (e.name !== "AbortError") flash("Couldn't share the PDF.");
     }
   };
 
@@ -594,10 +600,11 @@ export default function InvoiceScanner({ onBack }) {
                               : <Mail size={16} />}
                           </button>
                           <button
-                            onClick={() => { setEmailTo(i); setCustomAddr(""); }}
+                            onClick={() => shareScan(i)}
+                            disabled={sendingId === i.id}
                             className="rc-icon-btn rc-icon-mail-alt"
-                            aria-label="Email to another address"
-                            title="Send to a different address"
+                            aria-label="Share to another address"
+                            title="Share — pick Gmail and type the address"
                           >
                             <MailPlus size={16} />
                           </button>
@@ -630,11 +637,12 @@ export default function InvoiceScanner({ onBack }) {
                     </button>
 
                     <button
-                      onClick={() => { setEmailTo({ batch: rows, key }); setCustomAddr(""); }}
+                      onClick={() => sharePdf(rows, `rooster-invoices-${key}.pdf`, key)}
+                      disabled={Boolean(building)}
                       className="rc-icon-mail-alt-btn"
                     >
-                      <MailPlus size={15} />
-                      <span>Email this week's PDF</span>
+                      <Share2 size={15} />
+                      <span>Share this week's PDF</span>
                     </button>
                   </>
                 )}
@@ -659,61 +667,6 @@ export default function InvoiceScanner({ onBack }) {
       )}
 
       {toast && <div className="rc-toast">{toast}</div>}
-
-      {/* Send to a custom address */}
-      {emailTo && (
-        <div className="rc-scan-modal" onClick={() => setEmailTo(null)}>
-          <div className="rc-scan-modal-inner" onClick={(e) => e.stopPropagation()}>
-            <div className="rc-chat-header">
-              <div>
-                <div className="rc-chat-title">Send to someone else</div>
-                <div className="rc-chat-sub">
-                  {emailTo.batch
-                    ? `${emailTo.batch.filter((i) => i.hasScan).length} scans as one PDF`
-                    : emailTo.supplier || "Invoice"}
-                </div>
-              </div>
-              <button onClick={() => setEmailTo(null)} className="rc-close-btn">
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={{ padding: 16 }}>
-              <div className="rc-field">
-                <label className="rc-field-label">Email address</label>
-                <input
-                  className="rc-field-input"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  placeholder="name@example.com"
-                  value={customAddr}
-                  onChange={(e) => setCustomAddr(e.target.value)}
-                />
-              </div>
-
-              <button
-                onClick={() =>
-                  emailTo.batch
-                    ? emailPdf(
-                        emailTo.batch,
-                        `rooster-invoices-${emailTo.key}.pdf`,
-                        emailTo.key,
-                        customAddr,
-                        `Rooster & Co invoices — ${weekLabel(emailTo.key)}`
-                      )
-                    : emailScanTo(emailTo, customAddr)
-                }
-                disabled={!customAddr.includes("@") || sendingId !== null || Boolean(building)}
-                className={`rc-submit-btn ${customAddr.includes("@") ? "rc-submit-active" : ""}`}
-              >
-                <MailPlus size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-                {sendingId || building ? "Sending…" : "Send"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Scan viewer */}
       {viewing && (
@@ -747,11 +700,11 @@ export default function InvoiceScanner({ onBack }) {
               </button>
 
               <button
-                onClick={() => { setEmailTo(viewing.inv); setCustomAddr(""); setViewing(null); }}
+                onClick={() => shareScan(viewing.inv)}
                 className="rc-icon-mail-alt-btn"
               >
-                <MailPlus size={15} />
-                <span>Send to someone else</span>
+                <Share2 size={15} />
+                <span>Share — Gmail, WhatsApp, anywhere</span>
               </button>
 
               <a
