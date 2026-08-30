@@ -1225,3 +1225,26 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   padding-bottom: calc(14px + env(safe-area-inset-bottom));
   background: #000;
 }
+
+/* Second mail button — visually distinct from the default send */
+.rc-icon-mail-alt { color: var(--teal); background: color-mix(in srgb, var(--teal) 18%, transparent); }
+.rc-icon-mail-alt:active { background: color-mix(in srgb, var(--teal) 28%, transparent); }
+
+.rc-icon-mail-alt-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; background: none;
+  border: 1px solid var(--teal); border-radius: 12px;
+  padding: 11px; margin-top: 8px;
+  color: var(--teal); font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+
+.rc-pdf-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; background: none;
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 11px; margin-top: 8px;
+  color: var(--text-2); font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.rc-pdf-btn:disabled { opacity: 0.6; cursor: wait; }

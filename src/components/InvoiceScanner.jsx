@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import {
   Camera, Loader2, CheckCircle2, AlertTriangle, Trash2, Download,
   ChevronRight, FileText, X, Receipt, Mail, Eye, Send, Image as ImageIcon,
+  MailPlus, FileDown,
 } from "lucide-react";
 import {
   loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
@@ -29,9 +30,17 @@ export default function InvoiceScanner({ onBack }) {
   const [viewing, setViewing] = useState(null);   // { id, dataUrl, inv }
   const [sendingId, setSendingId] = useState(null);
   const [toast, setToast] = useState("");
+  const [emailTo, setEmailTo] = useState(null);   // invoice, or { batch, key }
+  const [customAddr, setCustomAddr] = useState("");
+  const [building, setBuilding] = useState("");
   const fileRef = useRef(null);
 
   const set = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
+
+  const flash = (msg, ms = 4000) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), ms);
+  };
 
   // Picking an existing photo goes through the manual cropper
   const pick = async (e) => {
@@ -121,18 +130,14 @@ export default function InvoiceScanner({ onBack }) {
   const openScan = async (inv) => {
     try {
       const rec = await getScan(inv.id);
-      if (!rec?.dataUrl) {
-        setToast("No scan saved for this invoice.");
-        setTimeout(() => setToast(""), 4000);
-        return;
-      }
+      if (!rec?.dataUrl) return flash("No scan saved for this invoice.");
       setViewing({ id: inv.id, dataUrl: rec.dataUrl, inv });
     } catch {
-      setToast("Couldn't open that scan.");
-      setTimeout(() => setToast(""), 4000);
+      flash("Couldn't open that scan.");
     }
   };
 
+  // Send one scan to the default (accountant) address
   const emailScan = async (inv) => {
     setSendingId(inv.id);
     setToast("");
@@ -153,16 +158,134 @@ export default function InvoiceScanner({ onBack }) {
       });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || "Send failed");
-      setToast(`Sent to ${d.sentTo}`);
+      flash(`Sent to ${d.sentTo}`);
     } catch (e) {
-      setToast(e.message || "Couldn't send that scan.");
+      flash(e.message || "Couldn't send that scan.");
     } finally {
       setSendingId(null);
-      setTimeout(() => setToast(""), 4000);
     }
   };
 
-  // Shared export — takes any set of invoices and writes one workbook
+  // Send one scan to an address the user types in
+  const emailScanTo = async (inv, address) => {
+    setSendingId(inv.id);
+    setToast("");
+    try {
+      const rec = await getScan(inv.id);
+      if (!rec?.dataUrl) throw new Error("No scan saved");
+
+      const r = await fetch("/api/send-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: address,
+          image: rec.dataUrl.split(",")[1],
+          supplier: inv.supplier,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          total: inv.total,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Send failed");
+      flash(`Sent to ${d.sentTo}`);
+      setEmailTo(null);
+      setCustomAddr("");
+    } catch (e) {
+      flash(e.message || "Couldn't send that scan.");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  // ---------- PDF ----------
+  const buildPdf = async (rows, label) => {
+    setBuilding(label);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pw = doc.internal.pageSize.getWidth();
+      const ph = doc.internal.pageSize.getHeight();
+      const margin = 8;
+
+      let added = 0;
+      for (const inv of rows) {
+        if (!inv.hasScan) continue;
+        const rec = await getScan(inv.id).catch(() => null);
+        if (!rec?.dataUrl) continue;
+
+        const dims = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ w: img.width, h: img.height });
+          img.onerror = () => resolve(null);
+          img.src = rec.dataUrl;
+        });
+        if (!dims) continue;
+
+        if (added > 0) doc.addPage();
+
+        const maxW = pw - margin * 2;
+        const maxH = ph - margin * 2 - 10;
+        const scale = Math.min(maxW / dims.w, maxH / dims.h);
+        const w = dims.w * scale;
+        const h = dims.h * scale;
+
+        doc.setFontSize(9);
+        doc.setTextColor(90);
+        const caption = [
+          inv.supplier || "Unknown supplier",
+          inv.invoiceNumber ? `#${inv.invoiceNumber}` : null,
+          inv.invoiceDate || null,
+          inv.total != null ? money(inv.total) : null,
+        ].filter(Boolean).join("  ·  ");
+        doc.text(caption, margin, margin + 4);
+
+        doc.addImage(rec.dataUrl, "JPEG", margin + (maxW - w) / 2, margin + 8, w, h);
+        added++;
+      }
+
+      if (!added) {
+        flash("No saved scans to put in a PDF.");
+        return null;
+      }
+      return { doc, count: added };
+    } catch {
+      flash("Couldn't build the PDF.");
+      return null;
+    } finally {
+      setBuilding("");
+    }
+  };
+
+  const downloadPdf = async (rows, filename, label) => {
+    const built = await buildPdf(rows, label);
+    if (built) built.doc.save(filename);
+  };
+
+  const emailPdf = async (rows, filename, label, address, subject) => {
+    const built = await buildPdf(rows, label);
+    if (!built) return;
+    setSendingId("pdf");
+    try {
+      const base64 = built.doc.output("datauristring").split(",")[1];
+      const r = await fetch("/api/send-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: address, pdf: base64, filename, subject }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Send failed");
+      flash(`Sent ${built.count} scans to ${d.sentTo}`, 5000);
+      setEmailTo(null);
+      setCustomAddr("");
+    } catch (e) {
+      flash(e.message || "Couldn't send the PDF.");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  // ---------- Excel export ----------
   const exportRows = async (rows, filename) => {
     const XLSX = await import("xlsx");
 
@@ -336,6 +459,7 @@ export default function InvoiceScanner({ onBack }) {
   // ---------- Main list ----------
   const weeks = groupByWeek(invoices);
   const grandTotal = invoices.reduce((s, i) => s + (i.total || 0), 0);
+  const scanCount = invoices.filter((i) => i.hasScan).length;
 
   return (
     <div className="rc-scroll-area">
@@ -386,17 +510,40 @@ export default function InvoiceScanner({ onBack }) {
       )}
 
       {invoices.length > 0 && (
-        <button onClick={exportAll} className="rc-export-btn" style={{ marginBottom: 22 }}>
-          <Download size={15} />
-          <span>
-            Export all {invoices.length} invoice{invoices.length === 1 ? "" : "s"} to Excel
-          </span>
-        </button>
+        <>
+          <button onClick={exportAll} className="rc-export-btn">
+            <Download size={15} />
+            <span>
+              Export all {invoices.length} invoice{invoices.length === 1 ? "" : "s"} to Excel
+            </span>
+          </button>
+
+          {scanCount > 0 && (
+            <button
+              onClick={() =>
+                downloadPdf(
+                  invoices,
+                  `rooster-invoices-all-${new Date().toISOString().slice(0, 10)}.pdf`,
+                  "all"
+                )
+              }
+              disabled={building === "all"}
+              className="rc-pdf-btn"
+              style={{ marginBottom: 22 }}
+            >
+              {building === "all" ? <Loader2 size={15} className="rc-spin" /> : <FileDown size={15} />}
+              <span>
+                {building === "all" ? "Building PDF…" : `All ${scanCount} scans as one PDF`}
+              </span>
+            </button>
+          )}
+        </>
       )}
 
       {weeks.map(([key, rows]) => {
         const total = rows.reduce((s, i) => s + (i.total || 0), 0);
         const open = openWeek === key;
+        const weekScans = rows.filter((i) => i.hasScan).length;
         return (
           <div key={key} className="rc-week-block">
             <button
@@ -439,11 +586,20 @@ export default function InvoiceScanner({ onBack }) {
                             onClick={() => emailScan(i)}
                             disabled={sendingId === i.id}
                             className="rc-icon-btn rc-icon-mail"
-                            aria-label="Email scan"
+                            aria-label="Email to the usual address"
+                            title="Send to the usual address"
                           >
                             {sendingId === i.id
                               ? <Loader2 size={16} className="rc-spin" />
                               : <Mail size={16} />}
+                          </button>
+                          <button
+                            onClick={() => { setEmailTo(i); setCustomAddr(""); }}
+                            className="rc-icon-btn rc-icon-mail-alt"
+                            aria-label="Email to another address"
+                            title="Send to a different address"
+                          >
+                            <MailPlus size={16} />
                           </button>
                         </>
                       )}
@@ -459,6 +615,29 @@ export default function InvoiceScanner({ onBack }) {
                   <Download size={15} />
                   <span>Export this week only</span>
                 </button>
+
+                {weekScans > 0 && (
+                  <>
+                    <button
+                      onClick={() => downloadPdf(rows, `rooster-invoices-${key}.pdf`, key)}
+                      disabled={building === key}
+                      className="rc-pdf-btn"
+                    >
+                      {building === key ? <Loader2 size={15} className="rc-spin" /> : <FileDown size={15} />}
+                      <span>
+                        {building === key ? "Building PDF…" : `${weekScans} scans as one PDF`}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => { setEmailTo({ batch: rows, key }); setCustomAddr(""); }}
+                      className="rc-icon-mail-alt-btn"
+                    >
+                      <MailPlus size={15} />
+                      <span>Email this week's PDF</span>
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -481,6 +660,62 @@ export default function InvoiceScanner({ onBack }) {
 
       {toast && <div className="rc-toast">{toast}</div>}
 
+      {/* Send to a custom address */}
+      {emailTo && (
+        <div className="rc-scan-modal" onClick={() => setEmailTo(null)}>
+          <div className="rc-scan-modal-inner" onClick={(e) => e.stopPropagation()}>
+            <div className="rc-chat-header">
+              <div>
+                <div className="rc-chat-title">Send to someone else</div>
+                <div className="rc-chat-sub">
+                  {emailTo.batch
+                    ? `${emailTo.batch.filter((i) => i.hasScan).length} scans as one PDF`
+                    : emailTo.supplier || "Invoice"}
+                </div>
+              </div>
+              <button onClick={() => setEmailTo(null)} className="rc-close-btn">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: 16 }}>
+              <div className="rc-field">
+                <label className="rc-field-label">Email address</label>
+                <input
+                  className="rc-field-input"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  value={customAddr}
+                  onChange={(e) => setCustomAddr(e.target.value)}
+                />
+              </div>
+
+              <button
+                onClick={() =>
+                  emailTo.batch
+                    ? emailPdf(
+                        emailTo.batch,
+                        `rooster-invoices-${emailTo.key}.pdf`,
+                        emailTo.key,
+                        customAddr,
+                        `Rooster & Co invoices — ${weekLabel(emailTo.key)}`
+                      )
+                    : emailScanTo(emailTo, customAddr)
+                }
+                disabled={!customAddr.includes("@") || sendingId !== null || Boolean(building)}
+                className={`rc-submit-btn ${customAddr.includes("@") ? "rc-submit-active" : ""}`}
+              >
+                <MailPlus size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                {sendingId || building ? "Sending…" : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scan viewer */}
       {viewing && (
         <div className="rc-scan-modal" onClick={() => setViewing(null)}>
           <div className="rc-scan-modal-inner" onClick={(e) => e.stopPropagation()}>
@@ -508,7 +743,15 @@ export default function InvoiceScanner({ onBack }) {
                 className="rc-submit-btn rc-submit-active"
               >
                 <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-                {sendingId === viewing.id ? "Sending…" : "Email this scan"}
+                {sendingId === viewing.id ? "Sending…" : "Email to the usual address"}
+              </button>
+
+              <button
+                onClick={() => { setEmailTo(viewing.inv); setCustomAddr(""); setViewing(null); }}
+                className="rc-icon-mail-alt-btn"
+              >
+                <MailPlus size={15} />
+                <span>Send to someone else</span>
               </button>
 
               <a
