@@ -11,6 +11,7 @@ import { makeThumbBase64 } from "../utils/scanFilter";
 import { fileToCanvas } from "../utils/perspective";
 import { putScan, getScan, deleteScan, clearScans } from "../data/imageStore";
 import CropView from "./CropView";
+import LiveScanner from "./LiveScanner";
 
 const emptyDraft = {
   supplier: "", abn: "", invoiceNumber: "", invoiceDate: "",
@@ -20,6 +21,7 @@ const emptyDraft = {
 export default function InvoiceScanner({ onBack }) {
   const [invoices, setInvoices] = useState(() => loadInvoices());
   const [draft, setDraft] = useState(null);
+  const [scanning, setScanning] = useState(false);
   const [cropping, setCropping] = useState(null); // source canvas
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -28,11 +30,10 @@ export default function InvoiceScanner({ onBack }) {
   const [sendingId, setSendingId] = useState(null);
   const [toast, setToast] = useState("");
   const fileRef = useRef(null);
-  const camRef = useRef(null);
 
   const set = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
 
-  // Step 1 — load the photo and hand it to the cropper
+  // Picking an existing photo goes through the manual cropper
   const pick = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -46,9 +47,10 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Step 2 — cropped + enhanced image comes back, send it to be read
-  const afterCrop = async (dataUrl) => {
+  // Cropped or live-captured image comes back — send it to be read
+  const readScan = async (dataUrl) => {
     setCropping(null);
+    setScanning(false);
     setBusy(true);
     setErr("");
     try {
@@ -206,12 +208,26 @@ export default function InvoiceScanner({ onBack }) {
   const exportAll = () =>
     exportRows(invoices, `rooster-invoices-all-${new Date().toISOString().slice(0, 10)}.xlsx`);
 
+  // ---------- Live scanner ----------
+  if (scanning) {
+    return (
+      <LiveScanner
+        onCapture={readScan}
+        onCancel={() => setScanning(false)}
+        onPickFile={() => {
+          setScanning(false);
+          setTimeout(() => fileRef.current?.click(), 120);
+        }}
+      />
+    );
+  }
+
   // ---------- Crop screen ----------
   if (cropping) {
     return (
       <CropView
         canvas={cropping}
-        onDone={afterCrop}
+        onDone={readScan}
         onCancel={() => setCropping(null)}
       />
     );
@@ -338,14 +354,6 @@ export default function InvoiceScanner({ onBack }) {
       </div>
 
       <input
-        ref={camRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={pick}
-        style={{ display: "none" }}
-      />
-      <input
         ref={fileRef}
         type="file"
         accept="image/*"
@@ -354,7 +362,7 @@ export default function InvoiceScanner({ onBack }) {
       />
 
       <button
-        onClick={() => camRef.current?.click()}
+        onClick={() => setScanning(true)}
         disabled={busy}
         className="rc-scan-btn"
       >
@@ -460,7 +468,7 @@ export default function InvoiceScanner({ onBack }) {
       {invoices.length === 0 && !busy && (
         <div className="rc-namegate" style={{ minHeight: 200 }}>
           <div className="rc-namegate-sub">
-            No invoices yet. Photograph one to get started.
+            No invoices yet. Scan one to get started.
           </div>
         </div>
       )}
@@ -502,7 +510,7 @@ export default function InvoiceScanner({ onBack }) {
                 <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
                 {sendingId === viewing.id ? "Sending…" : "Email this scan"}
               </button>
-              
+
               <a
                 href={viewing.dataUrl}
                 download={`invoice-${viewing.inv.invoiceNumber || viewing.id}.jpg`}
