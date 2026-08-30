@@ -164,8 +164,7 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Teal button — open the phone's share sheet with the file attached,
-  // so you can pick Gmail and type any address yourself.
+  // Teal button — the phone's share sheet, with the file attached
   const shareScan = async (inv) => {
     setSendingId(inv.id);
     try {
@@ -291,8 +290,35 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // ---------- Excel export ----------
-  const exportRows = async (rows, filename) => {
+  const emailPdfDirect = async (rows, filename, label, subject) => {
+    const built = await buildPdf(rows, label);
+    if (!built) return;
+    setSendingId(`pdf-${label}`);
+    try {
+      const base64 = built.doc.output("datauristring").split(",")[1];
+      const r = await fetch("/api/send-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: base64,
+          filename,
+          mime: "application/pdf",
+          subject,
+          body: `${built.count} scanned invoice${built.count === 1 ? "" : "s"} attached.\n\n— Rooster & Co staff app`,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Send failed");
+      flash(`PDF sent to ${d.sentTo}`);
+    } catch (e) {
+      flash(e.message || "Couldn't send the PDF.");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  // ---------- Excel ----------
+  const buildWorkbook = async (rows) => {
     const XLSX = await import("xlsx");
 
     const summary = rows.map((i) => ({
@@ -328,14 +354,41 @@ export default function InvoiceScanner({ onBack }) {
     if (items.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(items), "Line Items");
     }
+    return { XLSX, wb };
+  };
+
+  const downloadExcel = async (rows, filename) => {
+    const { XLSX, wb } = await buildWorkbook(rows);
     XLSX.writeFile(wb, filename);
   };
 
-  const exportWeek = (weekKey, rows) =>
-    exportRows(rows, `rooster-invoices-week-${weekKey}.xlsx`);
+  const emailExcel = async (rows, filename, label, subject) => {
+    setSendingId(`xls-${label}`);
+    try {
+      const { XLSX, wb } = await buildWorkbook(rows);
+      const base64 = XLSX.write(wb, { bookType: "xlsx", type: "base64" });
+      const total = rows.reduce((s, i) => s + (i.total || 0), 0);
 
-  const exportAll = () =>
-    exportRows(invoices, `rooster-invoices-all-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const r = await fetch("/api/send-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file: base64,
+          filename,
+          mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          subject,
+          body: `${rows.length} invoice${rows.length === 1 ? "" : "s"} · ${money(total)} total\n\n— Rooster & Co staff app`,
+        }),
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Send failed");
+      flash(`Spreadsheet sent to ${d.sentTo}`);
+    } catch (e) {
+      flash(e.message || "Couldn't send the spreadsheet.");
+    } finally {
+      setSendingId(null);
+    }
+  };
 
   // ---------- Live scanner ----------
   if (scanning) {
@@ -466,6 +519,7 @@ export default function InvoiceScanner({ onBack }) {
   const weeks = groupByWeek(invoices);
   const grandTotal = invoices.reduce((s, i) => s + (i.total || 0), 0);
   const scanCount = invoices.filter((i) => i.hasScan).length;
+  const stamp = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="rc-scroll-area">
@@ -516,34 +570,60 @@ export default function InvoiceScanner({ onBack }) {
       )}
 
       {invoices.length > 0 && (
-        <>
-          <button onClick={exportAll} className="rc-export-btn">
-            <Download size={15} />
-            <span>
-              Export all {invoices.length} invoice{invoices.length === 1 ? "" : "s"} to Excel
-            </span>
-          </button>
-
-          {scanCount > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <div className="rc-export-pair">
+            <button
+              onClick={() => downloadExcel(invoices, `rooster-invoices-all-${stamp}.xlsx`)}
+              className="rc-export-btn"
+            >
+              <Download size={15} />
+              <span>All to Excel</span>
+            </button>
             <button
               onClick={() =>
-                downloadPdf(
+                emailExcel(
                   invoices,
-                  `rooster-invoices-all-${new Date().toISOString().slice(0, 10)}.pdf`,
-                  "all"
+                  `rooster-invoices-all-${stamp}.xlsx`,
+                  "all",
+                  `Rooster & Co — all invoices (${invoices.length})`
                 )
               }
-              disabled={building === "all"}
-              className="rc-pdf-btn"
-              style={{ marginBottom: 22 }}
+              disabled={sendingId === "xls-all"}
+              className="rc-export-btn rc-export-mail"
             >
-              {building === "all" ? <Loader2 size={15} className="rc-spin" /> : <FileDown size={15} />}
-              <span>
-                {building === "all" ? "Building PDF…" : `All ${scanCount} scans as one PDF`}
-              </span>
+              {sendingId === "xls-all" ? <Loader2 size={15} className="rc-spin" /> : <Mail size={15} />}
+              <span>Email</span>
             </button>
+          </div>
+
+          {scanCount > 0 && (
+            <div className="rc-export-pair">
+              <button
+                onClick={() => downloadPdf(invoices, `rooster-invoices-all-${stamp}.pdf`, "all")}
+                disabled={building === "all"}
+                className="rc-pdf-btn"
+              >
+                {building === "all" ? <Loader2 size={15} className="rc-spin" /> : <FileDown size={15} />}
+                <span>{scanCount} scans as PDF</span>
+              </button>
+              <button
+                onClick={() =>
+                  emailPdfDirect(
+                    invoices,
+                    `rooster-invoices-all-${stamp}.pdf`,
+                    "all",
+                    "Rooster & Co — all scanned invoices"
+                  )
+                }
+                disabled={Boolean(building) || sendingId === "pdf-all"}
+                className="rc-pdf-btn rc-export-mail"
+              >
+                {sendingId === "pdf-all" ? <Loader2 size={15} className="rc-spin" /> : <Mail size={15} />}
+                <span>Email</span>
+              </button>
+            </div>
           )}
-        </>
+        </div>
       )}
 
       {weeks.map(([key, rows]) => {
@@ -618,23 +698,58 @@ export default function InvoiceScanner({ onBack }) {
                   ))}
                 </div>
 
-                <button onClick={() => exportWeek(key, rows)} className="rc-export-btn">
-                  <Download size={15} />
-                  <span>Export this week only</span>
-                </button>
+                <div className="rc-export-pair">
+                  <button
+                    onClick={() => downloadExcel(rows, `rooster-invoices-week-${key}.xlsx`)}
+                    className="rc-export-btn"
+                  >
+                    <Download size={15} />
+                    <span>Week to Excel</span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      emailExcel(
+                        rows,
+                        `rooster-invoices-week-${key}.xlsx`,
+                        key,
+                        `Rooster & Co invoices — ${weekLabel(key)}`
+                      )
+                    }
+                    disabled={sendingId === `xls-${key}`}
+                    className="rc-export-btn rc-export-mail"
+                  >
+                    {sendingId === `xls-${key}` ? <Loader2 size={15} className="rc-spin" /> : <Mail size={15} />}
+                    <span>Email</span>
+                  </button>
+                </div>
 
                 {weekScans > 0 && (
                   <>
-                    <button
-                      onClick={() => downloadPdf(rows, `rooster-invoices-${key}.pdf`, key)}
-                      disabled={building === key}
-                      className="rc-pdf-btn"
-                    >
-                      {building === key ? <Loader2 size={15} className="rc-spin" /> : <FileDown size={15} />}
-                      <span>
-                        {building === key ? "Building PDF…" : `${weekScans} scans as one PDF`}
-                      </span>
-                    </button>
+                    <div className="rc-export-pair">
+                      <button
+                        onClick={() => downloadPdf(rows, `rooster-invoices-${key}.pdf`, key)}
+                        disabled={building === key}
+                        className="rc-pdf-btn"
+                      >
+                        {building === key ? <Loader2 size={15} className="rc-spin" /> : <FileDown size={15} />}
+                        <span>{weekScans} scans as PDF</span>
+                      </button>
+                      <button
+                        onClick={() =>
+                          emailPdfDirect(
+                            rows,
+                            `rooster-invoices-${key}.pdf`,
+                            key,
+                            `Rooster & Co scans — ${weekLabel(key)}`
+                          )
+                        }
+                        disabled={Boolean(building) || sendingId === `pdf-${key}`}
+                        className="rc-pdf-btn rc-export-mail"
+                      >
+                        {sendingId === `pdf-${key}` ? <Loader2 size={15} className="rc-spin" /> : <Mail size={15} />}
+                        <span>Email</span>
+                      </button>
+                    </div>
 
                     <button
                       onClick={() => sharePdf(rows, `rooster-invoices-${key}.pdf`, key)}
@@ -642,7 +757,7 @@ export default function InvoiceScanner({ onBack }) {
                       className="rc-icon-mail-alt-btn"
                     >
                       <Share2 size={15} />
-                      <span>Share this week's PDF</span>
+                      <span>Share PDF to someone else</span>
                     </button>
                   </>
                 )}

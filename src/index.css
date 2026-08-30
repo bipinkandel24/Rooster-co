@@ -1248,3 +1248,12 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   font-family: inherit; cursor: pointer;
 }
 .rc-pdf-btn:disabled { opacity: 0.6; cursor: wait; }
+
+.rc-export-pair {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.rc-export-pair > * { margin-top: 0 !important; }
+.rc-export-pair > :first-child { flex: 1; }
+.rc-export-mail { flex: 0 0 96px; }
