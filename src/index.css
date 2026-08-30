@@ -1102,3 +1102,61 @@ select.rc-field-input { appearance: none; cursor: pointer; }
 .rc-today-warn .rc-today-icon { color: var(--gold); }
 .rc-today-bad { border-color: var(--alert-border); background: var(--alert-bg); }
 .rc-today-bad .rc-today-icon { color: var(--danger-soft); }
+
+
+
+.rc-brand {
+  padding: calc(24px + env(safe-area-inset-top)) 20px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.rc-corner-btn {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+}
+.rc-corner-left { left: 14px; right: auto; }
+
+.rc-frame {
+  width: 100%;
+  max-width: 480px;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-frame);
+  color: var(--text);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow: hidden;
+  position: relative;
+}
+
+@media (max-height: 720px) {
+  .rc-brand { padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: 10px; }
+  .rc-brand-badge { width: 46px; height: 46px; margin-bottom: 5px; }
+  .rc-brand-name { font-size: 13.5px; }
+  .rc-brand-sub { font-size: 9.5px; }
+  .rc-header { padding: 14px 20px 12px; }
+  .rc-header-title { font-size: 20px; }
+  .rc-corner-btn { width: 36px; height: 36px; top: calc(10px + env(safe-area-inset-top)); }
+}
+
+@media (max-width: 380px) {
+  .rc-scroll-area { padding: 16px; }
+  .rc-morning-card, .rc-prep-card { padding: 14px 14px 16px; }
+  .rc-prep-card-title { font-size: 17px; }
+}
