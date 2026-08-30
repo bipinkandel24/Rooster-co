@@ -47,7 +47,7 @@ function enhanceContext(ctx, w, h) {
 }
 
 // Clean up a canvas in place and return the result as a JPEG data URL
-export function enhanceCanvas(canvas, quality = 0.82) {
+export function enhanceCanvas(canvas, quality = 0.92) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   enhanceContext(ctx, canvas.width, canvas.height);
   const dataUrl = canvas.toDataURL("image/jpeg", quality);
@@ -74,7 +74,7 @@ export async function makeScan(file, maxDim = 2000) {
 }
 
 // Smaller copy of a data URL, for sending to the AI without a huge payload
-export async function makeThumbBase64(dataUrl, maxDim = 1500, quality = 0.75) {
+export async function makeThumbBase64(dataUrl, maxDim = 2000, quality = 0.85) {
   const img = new Image();
   await new Promise((res, rej) => {
     img.onload = res;

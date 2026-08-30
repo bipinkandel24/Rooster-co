@@ -41,7 +41,7 @@ function homography(dst, src) {
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // corners: [topLeft, topRight, bottomRight, bottomLeft] in image pixels
-export function warpToRect(sourceCanvas, corners, maxDim = 2000) {
+export function warpToRect(sourceCanvas, corners, maxDim = 2600) {
   const [tl, tr, br, bl] = corners;
 
   let w = Math.round(Math.max(dist(tl, tr), dist(bl, br)));
