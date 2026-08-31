@@ -4,7 +4,7 @@ import {
   AlertTriangle, Check, History,
 } from "lucide-react";
 import {
-  BUCKETS, loadWeeks, saveWeek, deleteWeek, mondayOf, weekLabel, lastNWeeks,
+  BUCKETS, loadWeeks, saveWeek, deleteWeek, mondayOf, weekLabel,
   stockForWeek, purchasesForWeek, calculate, money, money2, pct1,
 } from "../data/pnl";
 
@@ -28,20 +28,32 @@ export default function WeeklyPnl({ onBack }) {
   });
   const [screen, setScreen] = useState("edit"); // edit | history
   const [pulled, setPulled] = useState("");
+  const [saved, setSaved] = useState("");       // "" | "yes" | "no"
+  const [dirty, setDirty] = useState(false);
 
   const calc = useMemo(() => calculate(current), [current]);
   const labourPct = calc.sales > 0 ? (calc.labour / calc.sales) * 100 : 0;
 
-  const set = (k, v) => setCurrent((p) => ({ ...p, [k]: v }));
-  const setPurchase = (id, v) =>
+  const set = (k, v) => {
+    setCurrent((p) => ({ ...p, [k]: v }));
+    setDirty(true);
+    setSaved("");
+  };
+  const setPurchase = (id, v) => {
     setCurrent((p) => ({ ...p, purchases: { ...p.purchases, [id]: v } }));
+    setDirty(true);
+    setSaved("");
+  };
 
   const shiftWeek = (dir) => {
+    if (dirty && !window.confirm("You have unsaved changes. Leave this week anyway?")) return;
     const d = new Date(current.weekStart);
     d.setDate(d.getDate() + dir * 7);
     const key = d.toLocaleDateString("en-CA");
     setCurrent(weeks.find((w) => w.weekStart === key) || blankWeek(key));
     setPulled("");
+    setSaved("");
+    setDirty(false);
   };
 
   // Pull stock + purchases straight from the app's own records
@@ -57,6 +69,8 @@ export default function WeeklyPnl({ onBack }) {
         BUCKETS.map((b) => [b.id, totals[b.id] ? totals[b.id].toFixed(2) : p.purchases[b.id]])
       ),
     }));
+    setDirty(true);
+    setSaved("");
 
     const bits = [];
     if (stock.opening != null) bits.push("opening stock");
@@ -67,7 +81,14 @@ export default function WeeklyPnl({ onBack }) {
   };
 
   const save = () => {
-    setWeeks(saveWeek(current));
+    const next = saveWeek(current);
+    setWeeks(next);
+
+    // Confirm the week actually landed in storage rather than assuming
+    const ok = next.some((w) => w.weekStart === current.weekStart);
+    setSaved(ok ? "yes" : "no");
+    if (ok) setDirty(false);
+    setTimeout(() => setSaved(""), 3500);
   };
 
   const exportWeek = async () => {
@@ -166,7 +187,7 @@ export default function WeeklyPnl({ onBack }) {
             return (
               <div key={w.weekStart} className="rc-stock-row">
                 <button
-                  onClick={() => { setCurrent(w); setScreen("edit"); }}
+                  onClick={() => { setCurrent(w); setDirty(false); setScreen("edit"); }}
                   className="rc-stock-info"
                   style={{ background: "none", border: "none", textAlign: "left", padding: 0, color: "inherit", cursor: "pointer" }}
                 >
@@ -200,7 +221,15 @@ export default function WeeklyPnl({ onBack }) {
   // ---------------- Editor ----------------
   return (
     <div className="rc-scroll-area">
-      <button onClick={onBack} className="rc-back-btn">← Back</button>
+      <button
+        onClick={() => {
+          if (dirty && !window.confirm("You have unsaved changes. Leave anyway?")) return;
+          onBack();
+        }}
+        className="rc-back-btn"
+      >
+        ← Back
+      </button>
 
       <div className="rc-detail-heading">
         <div className="rc-module-icon" style={{ background: "var(--bg-card)" }}>
@@ -208,7 +237,10 @@ export default function WeeklyPnl({ onBack }) {
         </div>
         <div>
           <h2 className="rc-detail-title">Weekly P&amp;L</h2>
-          <div className="rc-stock-unit">{weekLabel(current.weekStart)}</div>
+          <div className="rc-stock-unit">
+            {weekLabel(current.weekStart)}
+            {dirty ? " · unsaved" : ""}
+          </div>
         </div>
       </div>
 
@@ -385,10 +417,24 @@ export default function WeeklyPnl({ onBack }) {
         />
       </div>
 
+      {saved === "no" && (
+        <div className="rc-urgent-note">
+          Couldn't save — device storage may be full. Export what you need, then clear
+          old invoices or stocktakes to free space.
+        </div>
+      )}
+
       <button onClick={save} className="rc-submit-btn rc-submit-active">
         <Check size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-        Save this week
+        {saved === "yes" ? "Saved ✓" : saved === "no" ? "Save failed" : "Save this week"}
       </button>
+
+      {saved === "yes" && (
+        <div className="rc-sent-banner" style={{ marginTop: 10 }}>
+          <Check size={16} color="var(--ok-text)" />
+          <span>{weekLabel(current.weekStart)} saved.</span>
+        </div>
+      )}
 
       <button onClick={exportWeek} className="rc-export-btn">
         <Download size={15} />
