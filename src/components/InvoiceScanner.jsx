@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import {
   Camera, Loader2, CheckCircle2, AlertTriangle, Trash2, Download,
   ChevronRight, FileText, X, Receipt, Mail, Eye, Send, Image as ImageIcon,
-  MailPlus, FileDown, Share2,
+  MailPlus, FileDown, Share2, Inbox,
 } from "lucide-react";
 import {
   loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
@@ -13,6 +13,7 @@ import { fileToCanvas } from "../utils/perspective";
 import { putScan, getScan, deleteScan, clearScans } from "../data/imageStore";
 import CropView from "./CropView";
 import LiveScanner from "./LiveScanner";
+import InboxQueue from "./InboxQueue";
 
 const emptyDraft = {
   supplier: "", abn: "", invoiceNumber: "", invoiceDate: "",
@@ -24,6 +25,8 @@ export default function InvoiceScanner({ onBack }) {
   const [draft, setDraft] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [cropping, setCropping] = useState(null); // source canvas
+  const [inbox, setInbox] = useState(false);
+  const [afterSave, setAfterSave] = useState(null); // callback for mailbox items
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [openWeek, setOpenWeek] = useState(null);
@@ -54,7 +57,7 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Cropped or live-captured image comes back — send it to be read
+  // Cropped, live-captured or emailed image — send it to be read
   const readScan = async (dataUrl) => {
     setCropping(null);
     setScanning(false);
@@ -90,6 +93,13 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
+  // Called by the mailbox queue — read the image, then return to the queue
+  const processFromInbox = async (dataUrl, { onSaved }) => {
+    setInbox(false);
+    setAfterSave(() => onSaved);
+    await readScan(dataUrl);
+  };
+
   const saveDraft = async () => {
     const { _scanDataUrl, ...fields } = draft;
     const entry = saveInvoice({
@@ -110,6 +120,21 @@ export default function InvoiceScanner({ onBack }) {
       setInvoices((p) => [entry, ...p]);
     }
     setDraft(null);
+
+    // If this came from the mailbox, mark it read and go back to the queue
+    if (afterSave) {
+      await afterSave();
+      setAfterSave(null);
+      setInbox(true);
+    }
+  };
+
+  const cancelDraft = () => {
+    setDraft(null);
+    if (afterSave) {
+      setAfterSave(null);
+      setInbox(true); // back to the queue without marking it read
+    }
   };
 
   const remove = async (id) => {
@@ -390,6 +415,11 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
+  // ---------- Mailbox queue ----------
+  if (inbox) {
+    return <InboxQueue onProcess={processFromInbox} onBack={() => setInbox(false)} />;
+  }
+
   // ---------- Live scanner ----------
   if (scanning) {
     return (
@@ -420,7 +450,9 @@ export default function InvoiceScanner({ onBack }) {
     const lowConf = draft.confidence === "low";
     return (
       <div className="rc-scroll-area">
-        <button onClick={() => setDraft(null)} className="rc-back-btn">← Cancel</button>
+        <button onClick={cancelDraft} className="rc-back-btn">
+          {afterSave ? "← Back to inbox" : "← Cancel"}
+        </button>
 
         <div className="rc-detail-heading">
           <div className="rc-module-icon" style={{ background: "var(--bg-card)" }}>
@@ -509,7 +541,7 @@ export default function InvoiceScanner({ onBack }) {
 
         <button onClick={saveDraft} className="rc-submit-btn rc-submit-active">
           <CheckCircle2 size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-          Save invoice
+          {afterSave ? "Save and next" : "Save invoice"}
         </button>
       </div>
     );
@@ -552,6 +584,16 @@ export default function InvoiceScanner({ onBack }) {
       >
         {busy ? <Loader2 size={20} className="rc-spin" /> : <Camera size={20} />}
         <span>{busy ? "Reading invoice…" : "Scan an invoice"}</span>
+      </button>
+
+      <button
+        onClick={() => setInbox(true)}
+        disabled={busy}
+        className="rc-history-toggle"
+      >
+        <Inbox size={15} color="var(--text-2)" />
+        <span>Invoices sent by email</span>
+        <ChevronRight size={16} color="var(--text-3)" />
       </button>
 
       <button
@@ -770,7 +812,7 @@ export default function InvoiceScanner({ onBack }) {
       {invoices.length === 0 && !busy && (
         <div className="rc-namegate" style={{ minHeight: 200 }}>
           <div className="rc-namegate-sub">
-            No invoices yet. Scan one to get started.
+            No invoices yet. Scan one, or check the email inbox.
           </div>
         </div>
       )}

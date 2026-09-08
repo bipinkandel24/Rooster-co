@@ -1257,3 +1257,9 @@ select.rc-field-input { appearance: none; cursor: pointer; }
 .rc-export-pair > * { margin-top: 0 !important; }
 .rc-export-pair > :first-child { flex: 1; }
 .rc-export-mail { flex: 0 0 96px; }
+
+.rc-inbox-thumb {
+  width: 44px; height: 44px; flex-shrink: 0;
+  object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--border); background: #fff;
+}
