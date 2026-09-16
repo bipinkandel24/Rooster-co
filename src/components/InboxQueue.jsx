@@ -65,9 +65,8 @@ export default function InboxQueue({ onProcess, onBack }) {
     fetchInbox();
   }, []);
 
-  // Surface failures rather than swallowing them — otherwise a message that
-  // never gets flagged just silently reappears on every refresh.
   const markRead = async (uid) => {
+    console.log("markRead called for uid", uid);
     try {
       const r = await fetch("/api/inbox", {
         method: "POST",
@@ -75,21 +74,28 @@ export default function InboxQueue({ onProcess, onBack }) {
         body: JSON.stringify({ uid }),
       });
       const d = await r.json().catch(() => ({}));
+      console.log("markRead response", r.status, d);
       if (!d.ok) {
-        setErr(`Couldn't mark the email as read: ${d.detail || d.error || r.status}`);
+        setErr(`Couldn't mark as read: ${d.detail || d.error || r.status}`);
       }
     } catch (e) {
-      setErr(`Couldn't mark the email as read: ${e.message}`);
+      console.error("markRead failed", e);
+      setErr(`Couldn't mark as read: ${e.message}`);
     }
   };
 
-  // Only mark the email read once every page and attachment from it is done
-  const finishItem = (item) => {
-    setItems((prev) => {
-      const next = prev.filter((x) => x.key !== item.key);
-      if (!next.some((x) => x.uid === item.uid)) markRead(item.uid);
-      return next;
-    });
+  // Work out what's left *before* updating state, so the side effect is
+  // predictable rather than running inside a state updater.
+  const finishItem = async (item) => {
+    const next = items.filter((x) => x.key !== item.key);
+    const remaining = next.filter((x) => x.uid === item.uid).length;
+    console.log("finishItem", item.key, "uid", item.uid, "remaining for this email:", remaining);
+
+    setItems(next);
+
+    if (remaining === 0) {
+      await markRead(item.uid);
+    }
   };
 
   const openItem = async (item) => {
