@@ -1,8 +1,8 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 
-const MAX_ATTACHMENTS = 25;
-const MAX_BYTES = 8 * 1024 * 1024; // skip anything unreasonably large
+const MAX_MESSAGES = 25;
+const MAX_BYTES = 15 * 1024 * 1024; // PDFs run larger than photos
 
 function client() {
   return new ImapFlow({
@@ -17,6 +17,9 @@ function client() {
   });
 }
 
+const isImage = (t) => /^image\/(jpe?g|png|heic|heif)$/i.test(t || "");
+const isPdf = (t) => /^application\/pdf$/i.test(t || "");
+
 export default async function handler(req, res) {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
@@ -24,8 +27,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "Mailbox not configured" });
   }
 
-  // GET  — list unread invoice attachments
-  // POST — mark a message as read once it's been saved
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
 
   const c = client();
@@ -42,12 +43,10 @@ export default async function handler(req, res) {
         return res.json({ ok: true });
       }
 
-      // Unread messages only — read ones are treated as already handled
       const uids = await c.search({ seen: false }, { uid: true });
       if (!uids || !uids.length) return res.json({ ok: true, items: [] });
 
-      // Oldest first, capped
-      const take = uids.slice(0, MAX_ATTACHMENTS);
+      const take = uids.slice(0, MAX_MESSAGES);
       const items = [];
 
       for await (const msg of c.fetch(
@@ -62,19 +61,26 @@ export default async function handler(req, res) {
           continue;
         }
 
-        const images = (parsed.attachments || []).filter(
+        const files = (parsed.attachments || []).filter(
           (a) =>
             a.content &&
             a.size <= MAX_BYTES &&
-            /^image\/(jpe?g|png|heic|heif)$/i.test(a.contentType || "")
+            (isImage(a.contentType) || isPdf(a.contentType))
         );
 
-        images.forEach((a, idx) => {
+        files.forEach((a, idx) => {
+          const pdf = isPdf(a.contentType);
           items.push({
             uid: String(msg.uid),
             index: idx,
-            filename: a.filename || `scan-${msg.uid}-${idx}.jpg`,
-            mediaType: /png$/i.test(a.contentType) ? "image/png" : "image/jpeg",
+            total: files.length,
+            kind: pdf ? "pdf" : "image",
+            filename: a.filename || `scan-${msg.uid}-${idx}.${pdf ? "pdf" : "jpg"}`,
+            mediaType: pdf
+              ? "application/pdf"
+              : /png$/i.test(a.contentType)
+              ? "image/png"
+              : "image/jpeg",
             receivedAt: (parsed.date || msg.envelope?.date || new Date()).toISOString(),
             from: parsed.from?.text || msg.envelope?.from?.[0]?.address || "",
             subject: parsed.subject || msg.envelope?.subject || "",

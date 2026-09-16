@@ -877,4 +877,4 @@ export default function InvoiceScanner({ onBack }) {
       )}
     </div>
   );
-}
+ }

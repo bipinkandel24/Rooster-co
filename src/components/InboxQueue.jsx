@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
-  Inbox, Loader2, RefreshCw, ChevronRight, X, AlertTriangle, CheckCircle2, SkipForward,
+  Inbox, Loader2, RefreshCw, ChevronRight, AlertTriangle, SkipForward, FileText,
 } from "lucide-react";
+import { pdfToImages } from "../utils/pdfPages";
 
 export default function InboxQueue({ onProcess, onBack }) {
   const [items, setItems] = useState([]);
   const [state, setState] = useState("idle"); // idle | loading | ready | error
   const [err, setErr] = useState("");
-  const [workingIdx, setWorkingIdx] = useState(null);
+  const [workingKey, setWorkingKey] = useState(null);
 
   const fetchInbox = async () => {
     setState("loading");
@@ -16,7 +17,43 @@ export default function InboxQueue({ onProcess, onBack }) {
       const r = await fetch("/api/inbox", { credentials: "same-origin" });
       const d = await r.json();
       if (!d.ok) throw new Error(d.detail || d.error || "Couldn't read the mailbox");
-      setItems(d.items || []);
+
+      // Expand each PDF into one entry per page
+      const expanded = [];
+      for (const it of d.items || []) {
+        if (it.kind === "pdf") {
+          try {
+            const pages = await pdfToImages(it.data);
+            pages.forEach((dataUrl, p) => {
+              expanded.push({
+                ...it,
+                data: null,
+                dataUrl,
+                page: p + 1,
+                pageCount: pages.length,
+                key: `${it.uid}-${it.index}-${p}`,
+              });
+            });
+          } catch {
+            expanded.push({
+              ...it,
+              data: null,
+              dataUrl: null,
+              broken: true,
+              key: `${it.uid}-${it.index}`,
+            });
+          }
+        } else {
+          expanded.push({
+            ...it,
+            dataUrl: `data:${it.mediaType};base64,${it.data}`,
+            data: null,
+            key: `${it.uid}-${it.index}`,
+          });
+        }
+      }
+
+      setItems(expanded);
       setState("ready");
     } catch (e) {
       setErr(e.message);
@@ -40,20 +77,23 @@ export default function InboxQueue({ onProcess, onBack }) {
     }
   };
 
-  const openItem = async (item, idx) => {
-    setWorkingIdx(idx);
-    const dataUrl = `data:${item.mediaType};base64,${item.data}`;
-    // Hand it to the scanner's normal read + review flow
-    await onProcess(dataUrl, {
-      onSaved: () => markRead(item.uid),
-      label: item.filename,
+  // Only mark the email read once every page and attachment from it is done
+  const finishItem = (item) => {
+    setItems((prev) => {
+      const next = prev.filter((x) => x.key !== item.key);
+      if (!next.some((x) => x.uid === item.uid)) markRead(item.uid);
+      return next;
     });
-    setWorkingIdx(null);
   };
 
-  const skip = async (item) => {
-    await markRead(item.uid);
-    setItems((p) => p.filter((x) => !(x.uid === item.uid && x.index === item.index)));
+  const openItem = async (item) => {
+    if (!item.dataUrl) return;
+    setWorkingKey(item.key);
+    await onProcess(item.dataUrl, {
+      onSaved: () => finishItem(item),
+      label: item.filename,
+    });
+    setWorkingKey(null);
   };
 
   const fmtWhen = (iso) => {
@@ -64,7 +104,7 @@ export default function InboxQueue({ onProcess, onBack }) {
     return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" }) + `, ${time}`;
   };
 
-  const kb = (n) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e3)} KB`);
+  const emailCount = new Set(items.map((i) => i.uid)).size;
 
   return (
     <div className="rc-scroll-area">
@@ -78,7 +118,9 @@ export default function InboxQueue({ onProcess, onBack }) {
           <h2 className="rc-detail-title">Scanned by email</h2>
           <div className="rc-stock-unit">
             {state === "ready"
-              ? `${items.length} waiting`
+              ? items.length
+                ? `${items.length} waiting across ${emailCount} email${emailCount === 1 ? "" : "s"}`
+                : "Nothing waiting"
               : state === "loading"
               ? "Checking the mailbox…"
               : "Invoices sent from the office scanner"}
@@ -92,9 +134,7 @@ export default function InboxQueue({ onProcess, onBack }) {
       </button>
 
       {state === "error" && (
-        <div className="rc-urgent-note" style={{ wordBreak: "break-word" }}>
-          {err}
-        </div>
+        <div className="rc-urgent-note" style={{ wordBreak: "break-word" }}>{err}</div>
       )}
 
       {state === "ready" && items.length === 0 && (
@@ -114,34 +154,44 @@ export default function InboxQueue({ onProcess, onBack }) {
           </div>
 
           <div className="rc-stock-list">
-            {items.map((item, idx) => (
-              <div key={`${item.uid}-${item.index}`} className="rc-stock-row">
-                <img
-                  src={`data:${item.mediaType};base64,${item.data}`}
-                  alt=""
-                  className="rc-inbox-thumb"
-                />
+            {items.map((item) => (
+              <div key={item.key} className="rc-stock-row">
+                {item.dataUrl ? (
+                  <img src={item.dataUrl} alt="" className="rc-inbox-thumb" />
+                ) : (
+                  <div className="rc-inbox-thumb rc-inbox-broken">
+                    <FileText size={18} color="var(--text-faint)" />
+                  </div>
+                )}
+
                 <div className="rc-stock-info">
                   <div className="rc-stock-label">{item.filename}</div>
                   <div className="rc-stock-unit">
-                    {fmtWhen(item.receivedAt)} · {kb(item.size)}
+                    {item.broken
+                      ? "Couldn't read this PDF"
+                      : `${fmtWhen(item.receivedAt)}${
+                          item.pageCount > 1 ? ` · page ${item.page} of ${item.pageCount}` : ""
+                        }${item.total > 1 ? ` · file ${item.index + 1} of ${item.total}` : ""}`}
                   </div>
                 </div>
+
                 <button
-                  onClick={() => skip(item)}
+                  onClick={() => finishItem(item)}
+                  disabled={workingKey !== null}
                   className="rc-icon-btn"
                   aria-label="Skip"
-                  title="Skip — mark as read without saving"
+                  title="Skip — remove without saving"
                 >
                   <SkipForward size={15} />
                 </button>
+
                 <button
-                  onClick={() => openItem(item, idx)}
-                  disabled={workingIdx !== null}
+                  onClick={() => openItem(item)}
+                  disabled={workingKey !== null || !item.dataUrl}
                   className="rc-icon-btn rc-icon-mail"
                   aria-label="Read this invoice"
                 >
-                  {workingIdx === idx ? (
+                  {workingKey === item.key ? (
                     <Loader2 size={16} className="rc-spin" />
                   ) : (
                     <ChevronRight size={16} />

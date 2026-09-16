@@ -1263,3 +1263,12 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   object-fit: cover; border-radius: 8px;
   border: 1px solid var(--border); background: #fff;
 }
+.rc-inbox-thumb {
+  width: 44px; height: 44px; flex-shrink: 0;
+  object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--border); background: #fff;
+}
+.rc-inbox-broken {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-card);
+}
