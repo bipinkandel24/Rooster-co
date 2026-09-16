@@ -27,6 +27,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: "Mailbox not configured" });
   }
 
+  // GET  — list unread invoice attachments
+  // POST — mark a message as read once every attachment is handled
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).end();
 
   const c = client();
@@ -37,10 +39,20 @@ export default async function handler(req, res) {
 
     try {
       if (req.method === "POST") {
-        const { uid } = req.body || {};
-        if (!uid) return res.status(400).json({ ok: false, error: "No uid" });
-        await c.messageFlagsAdd({ uid: String(uid) }, ["\\Seen"], { uid: true });
-        return res.json({ ok: true });
+        // Vercel usually parses JSON, but don't rely on it
+        let body = req.body;
+        if (typeof body === "string") {
+          try {
+            body = JSON.parse(body);
+          } catch {
+            body = {};
+          }
+        }
+        const uid = body?.uid;
+        if (!uid) return res.status(400).json({ ok: false, error: "No uid supplied" });
+
+        await c.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+        return res.json({ ok: true, uid: String(uid) });
       }
 
       const uids = await c.search({ seen: false }, { uid: true });
@@ -68,6 +80,7 @@ export default async function handler(req, res) {
             (isImage(a.contentType) || isPdf(a.contentType))
         );
 
+        // One email may carry several invoices — each becomes its own item
         files.forEach((a, idx) => {
           const pdf = isPdf(a.contentType);
           items.push({

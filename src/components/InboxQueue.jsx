@@ -65,15 +65,21 @@ export default function InboxQueue({ onProcess, onBack }) {
     fetchInbox();
   }, []);
 
+  // Surface failures rather than swallowing them — otherwise a message that
+  // never gets flagged just silently reappears on every refresh.
   const markRead = async (uid) => {
     try {
-      await fetch("/api/inbox", {
+      const r = await fetch("/api/inbox", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
       });
-    } catch {
-      /* not fatal — it'll just show again next time */
+      const d = await r.json().catch(() => ({}));
+      if (!d.ok) {
+        setErr(`Couldn't mark the email as read: ${d.detail || d.error || r.status}`);
+      }
+    } catch (e) {
+      setErr(`Couldn't mark the email as read: ${e.message}`);
     }
   };
 
@@ -133,7 +139,7 @@ export default function InboxQueue({ onProcess, onBack }) {
         <span>{state === "loading" ? "Checking…" : "Check for new invoices"}</span>
       </button>
 
-      {state === "error" && (
+      {err && (
         <div className="rc-urgent-note" style={{ wordBreak: "break-word" }}>{err}</div>
       )}
 
