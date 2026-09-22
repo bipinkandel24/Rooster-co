@@ -1,63 +1,53 @@
 import React, { useState, useRef } from "react";
 import {
-  Camera, Loader2, CheckCircle2, AlertTriangle, Trash2, Download,
-  ChevronRight, FileText, X, Receipt, Mail, Eye, Send, Image as ImageIcon,
-  MailPlus, FileDown, Share2, Inbox,
+  Camera, Loader2, Trash2, Download, ChevronRight, X, Receipt, Mail, Eye, Send,
+  Image as ImageIcon, MailPlus, FileDown, Share2, Inbox,
 } from "lucide-react";
 import {
-  loadInvoices, saveInvoice, deleteInvoice, clearInvoices,
-  groupByWeek, weekLabel, money,
+  loadInvoices, deleteInvoice, clearInvoices, groupByWeek, weekLabel, money,
 } from "../data/invoices";
 import { makeThumbBase64 } from "../utils/scanFilter";
 import { fileToCanvas } from "../utils/perspective";
-import { putScan, getScan, deleteScan, clearScans } from "../data/imageStore";
+import { getScan, deleteScan, clearScans } from "../data/imageStore";
+import { toDraft, persistDraft } from "../data/invoiceDraft";
 import CropView from "./CropView";
 import LiveScanner from "./LiveScanner";
 import InboxQueue from "./InboxQueue";
-
-const emptyDraft = {
-  supplier: "", abn: "", invoiceNumber: "", invoiceDate: "",
-  subtotal: "", gst: "", total: "", lineItems: [], confidence: "", notes: "",
-};
+import InvoiceReviewForm from "./InvoiceReviewForm";
 
 export default function InvoiceScanner({ onBack }) {
   const [invoices, setInvoices] = useState(() => loadInvoices());
   const [draft, setDraft] = useState(null);
   const [scanning, setScanning] = useState(false);
-  const [cropping, setCropping] = useState(null); // source canvas
+  const [cropping, setCropping] = useState(null);
   const [inbox, setInbox] = useState(false);
-  const [afterSave, setAfterSave] = useState(null); // callback for mailbox items
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [openWeek, setOpenWeek] = useState(null);
-  const [viewing, setViewing] = useState(null);   // { id, dataUrl, inv }
+  const [viewing, setViewing] = useState(null);
   const [sendingId, setSendingId] = useState(null);
   const [toast, setToast] = useState("");
   const [building, setBuilding] = useState("");
   const fileRef = useRef(null);
-
-  const set = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
 
   const flash = (msg, ms = 4000) => {
     setToast(msg);
     setTimeout(() => setToast(""), ms);
   };
 
-  // Picking an existing photo goes through the manual cropper
   const pick = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setErr("");
     try {
-      const c = await fileToCanvas(file);
-      setCropping(c);
+      setCropping(await fileToCanvas(file));
     } catch {
       setErr("Couldn't open that photo.");
     }
   };
 
-  // Cropped, live-captured or emailed image — send it to be read
   const readScan = async (dataUrl) => {
     setCropping(null);
     setScanning(false);
@@ -65,7 +55,6 @@ export default function InvoiceScanner({ onBack }) {
     setErr("");
     try {
       const forAI = await makeThumbBase64(dataUrl);
-
       const r = await fetch("/api/scan-invoice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -73,19 +62,7 @@ export default function InvoiceScanner({ onBack }) {
       });
       const d = await r.json();
       if (!d.ok) throw new Error(d.detail || d.error || "Scan failed");
-
-      setDraft({
-        ...emptyDraft,
-        ...d.data,
-        abn: d.data.abn ?? "",
-        invoiceNumber: d.data.invoiceNumber ?? "",
-        invoiceDate: d.data.invoiceDate ?? "",
-        subtotal: d.data.subtotal ?? "",
-        gst: d.data.gst ?? "",
-        total: d.data.total ?? "",
-        lineItems: d.data.lineItems || [],
-        _scanDataUrl: dataUrl,
-      });
+      setDraft(toDraft(d.data, dataUrl));
     } catch (e) {
       setErr(e.message || "Couldn't read that invoice. Try a clearer photo.");
     } finally {
@@ -93,47 +70,15 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Called by the mailbox queue — read the image, then return to the queue
-  const processFromInbox = async (dataUrl, { onSaved }) => {
-    setInbox(false);
-    setAfterSave(() => onSaved);
-    await readScan(dataUrl);
-  };
-
   const saveDraft = async () => {
-    const { _scanDataUrl, ...fields } = draft;
-    const entry = saveInvoice({
-      ...fields,
-      subtotal: draft.subtotal === "" ? null : Number(draft.subtotal),
-      gst: draft.gst === "" ? null : Number(draft.gst),
-      total: draft.total === "" ? null : Number(draft.total),
-      hasScan: Boolean(_scanDataUrl),
-    });
+    setSaving(true);
+    const entry = await persistDraft(draft);
+    setSaving(false);
     if (entry) {
-      if (_scanDataUrl) {
-        try {
-          await putScan(entry.id, { dataUrl: _scanDataUrl });
-        } catch {
-          /* metadata is still saved even if the image couldn't be stored */
-        }
-      }
       setInvoices((p) => [entry, ...p]);
-    }
-    setDraft(null);
-
-    // If this came from the mailbox, mark it read and go back to the queue
-    if (afterSave) {
-      await afterSave();
-      setAfterSave(null);
-      setInbox(true);
-    }
-  };
-
-  const cancelDraft = () => {
-    setDraft(null);
-    if (afterSave) {
-      setAfterSave(null);
-      setInbox(true); // back to the queue without marking it read
+      setDraft(null);
+    } else {
+      setErr("Couldn't save — device storage may be full.");
     }
   };
 
@@ -160,14 +105,11 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Gold button — straight to the usual address, no typing
   const emailScan = async (inv) => {
     setSendingId(inv.id);
-    setToast("");
     try {
       const rec = await getScan(inv.id);
       if (!rec?.dataUrl) throw new Error("No scan saved");
-
       const r = await fetch("/api/send-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,17 +131,14 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // Teal button — the phone's share sheet, with the file attached
   const shareScan = async (inv) => {
     setSendingId(inv.id);
     try {
       const rec = await getScan(inv.id);
       if (!rec?.dataUrl) throw new Error("No scan saved");
-
       const blob = await (await fetch(rec.dataUrl)).blob();
       const name = `${(inv.supplier || "invoice").replace(/[^a-zA-Z0-9]/g, "_")}-${inv.invoiceNumber || inv.invoiceDate || inv.id}.jpg`;
       const file = new File([blob], name, { type: "image/jpeg" });
-
       const subject = `Invoice — ${inv.supplier || ""}${inv.invoiceNumber ? ` #${inv.invoiceNumber}` : ""}`;
       const body = [
         inv.supplier ? `Supplier: ${inv.supplier}` : null,
@@ -237,13 +176,12 @@ export default function InvoiceScanner({ onBack }) {
       const pw = doc.internal.pageSize.getWidth();
       const ph = doc.internal.pageSize.getHeight();
       const margin = 8;
-
       let added = 0;
+
       for (const inv of rows) {
         if (!inv.hasScan) continue;
         const rec = await getScan(inv.id).catch(() => null);
         if (!rec?.dataUrl) continue;
-
         const dims = await new Promise((resolve) => {
           const img = new Image();
           img.onload = () => resolve({ w: img.width, h: img.height });
@@ -251,7 +189,6 @@ export default function InvoiceScanner({ onBack }) {
           img.src = rec.dataUrl;
         });
         if (!dims) continue;
-
         if (added > 0) doc.addPage();
 
         const maxW = pw - margin * 2;
@@ -262,14 +199,16 @@ export default function InvoiceScanner({ onBack }) {
 
         doc.setFontSize(9);
         doc.setTextColor(90);
-        const caption = [
-          inv.supplier || "Unknown supplier",
-          inv.invoiceNumber ? `#${inv.invoiceNumber}` : null,
-          inv.invoiceDate || null,
-          inv.total != null ? money(inv.total) : null,
-        ].filter(Boolean).join("  ·  ");
-        doc.text(caption, margin, margin + 4);
-
+        doc.text(
+          [
+            inv.supplier || "Unknown supplier",
+            inv.invoiceNumber ? `#${inv.invoiceNumber}` : null,
+            inv.invoiceDate || null,
+            inv.total != null ? money(inv.total) : null,
+          ].filter(Boolean).join("  ·  "),
+          margin,
+          margin + 4
+        );
         doc.addImage(rec.dataUrl, "JPEG", margin + (maxW - w) / 2, margin + 8, w, h);
         added++;
       }
@@ -296,10 +235,8 @@ export default function InvoiceScanner({ onBack }) {
     const built = await buildPdf(rows, label);
     if (!built) return;
     try {
-      const blob = built.doc.output("blob");
-      const file = new File([blob], filename, { type: "application/pdf" });
+      const file = new File([built.doc.output("blob")], filename, { type: "application/pdf" });
       const title = `Rooster & Co invoices — ${built.count} scans`;
-
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title });
       } else {
@@ -320,12 +257,11 @@ export default function InvoiceScanner({ onBack }) {
     if (!built) return;
     setSendingId(`pdf-${label}`);
     try {
-      const base64 = built.doc.output("datauristring").split(",")[1];
       const r = await fetch("/api/send-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          file: base64,
+          file: built.doc.output("datauristring").split(",")[1],
           filename,
           mime: "application/pdf",
           subject,
@@ -345,7 +281,6 @@ export default function InvoiceScanner({ onBack }) {
   // ---------- Excel ----------
   const buildWorkbook = async (rows) => {
     const XLSX = await import("xlsx");
-
     const summary = rows.map((i) => ({
       Date: i.invoiceDate || "",
       Supplier: i.supplier || "",
@@ -361,7 +296,6 @@ export default function InvoiceScanner({ onBack }) {
       GST: rows.reduce((s, i) => s + (i.gst || 0), 0),
       Total: rows.reduce((s, i) => s + (i.total || 0), 0),
     });
-
     const items = rows.flatMap((i) =>
       (i.lineItems || []).map((li) => ({
         Date: i.invoiceDate || "",
@@ -373,12 +307,9 @@ export default function InvoiceScanner({ onBack }) {
         Amount: li.amount ?? "",
       }))
     );
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Invoices");
-    if (items.length) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(items), "Line Items");
-    }
+    if (items.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(items), "Line Items");
     return { XLSX, wb };
   };
 
@@ -391,14 +322,12 @@ export default function InvoiceScanner({ onBack }) {
     setSendingId(`xls-${label}`);
     try {
       const { XLSX, wb } = await buildWorkbook(rows);
-      const base64 = XLSX.write(wb, { bookType: "xlsx", type: "base64" });
       const total = rows.reduce((s, i) => s + (i.total || 0), 0);
-
       const r = await fetch("/api/send-file", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          file: base64,
+          file: XLSX.write(wb, { bookType: "xlsx", type: "base64" }),
           filename,
           mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           subject,
@@ -415,12 +344,16 @@ export default function InvoiceScanner({ onBack }) {
     }
   };
 
-  // ---------- Mailbox queue ----------
+  // ---------- Screens ----------
   if (inbox) {
-    return <InboxQueue onProcess={processFromInbox} onBack={() => setInbox(false)} />;
+    return (
+      <InboxQueue
+        onBack={() => setInbox(false)}
+        onSaved={(entry) => setInvoices((p) => [entry, ...p])}
+      />
+    );
   }
 
-  // ---------- Live scanner ----------
   if (scanning) {
     return (
       <LiveScanner
@@ -434,116 +367,20 @@ export default function InvoiceScanner({ onBack }) {
     );
   }
 
-  // ---------- Crop screen ----------
   if (cropping) {
-    return (
-      <CropView
-        canvas={cropping}
-        onDone={readScan}
-        onCancel={() => setCropping(null)}
-      />
-    );
+    return <CropView canvas={cropping} onDone={readScan} onCancel={() => setCropping(null)} />;
   }
 
-  // ---------- Review screen ----------
   if (draft) {
-    const lowConf = draft.confidence === "low";
     return (
-      <div className="rc-scroll-area">
-        <button onClick={cancelDraft} className="rc-back-btn">
-          {afterSave ? "← Back to inbox" : "← Cancel"}
-        </button>
-
-        <div className="rc-detail-heading">
-          <div className="rc-module-icon" style={{ background: "var(--bg-card)" }}>
-            <FileText size={19} color="var(--gold)" />
-          </div>
-          <div>
-            <h2 className="rc-detail-title">Check the details</h2>
-            <div className="rc-stock-unit">Fix anything that's wrong before saving</div>
-          </div>
-        </div>
-
-        {draft._scanDataUrl && (
-          <img src={draft._scanDataUrl} alt="Scanned invoice" className="rc-scan-preview" />
-        )}
-
-        {lowConf && (
-          <div className="rc-urgent-note">
-            The photo was hard to read — double-check every number against the paper invoice.
-          </div>
-        )}
-        {draft.notes && (
-          <div className="rc-due-banner">
-            <AlertTriangle size={15} color="var(--gold)" />
-            <span>{draft.notes}</span>
-          </div>
-        )}
-
-        <div className="rc-field">
-          <label className="rc-field-label">Supplier</label>
-          <input className="rc-field-input" value={draft.supplier}
-            onChange={(e) => set("supplier", e.target.value)} />
-        </div>
-
-        <div className="rc-field-row">
-          <div className="rc-field">
-            <label className="rc-field-label">Invoice no.</label>
-            <input className="rc-field-input" value={draft.invoiceNumber}
-              onChange={(e) => set("invoiceNumber", e.target.value)} />
-          </div>
-          <div className="rc-field">
-            <label className="rc-field-label">Date</label>
-            <input className="rc-field-input" type="date" value={draft.invoiceDate}
-              onChange={(e) => set("invoiceDate", e.target.value)} />
-          </div>
-        </div>
-
-        <div className="rc-field-row">
-          <div className="rc-field">
-            <label className="rc-field-label">Subtotal</label>
-            <input className="rc-field-input" type="number" step="0.01" value={draft.subtotal}
-              onChange={(e) => set("subtotal", e.target.value)} />
-          </div>
-          <div className="rc-field">
-            <label className="rc-field-label">GST</label>
-            <input className="rc-field-input" type="number" step="0.01" value={draft.gst}
-              onChange={(e) => set("gst", e.target.value)} />
-          </div>
-          <div className="rc-field">
-            <label className="rc-field-label">Total</label>
-            <input className="rc-field-input" type="number" step="0.01" value={draft.total}
-              onChange={(e) => set("total", e.target.value)} />
-          </div>
-        </div>
-
-        {draft.lineItems.length > 0 && (
-          <>
-            <div className="rc-checklist-heading" style={{ marginTop: 8 }}>
-              Line items
-              <span className="rc-checklist-count">{draft.lineItems.length}</span>
-            </div>
-            <div className="rc-stock-list">
-              {draft.lineItems.map((li, i) => (
-                <div key={i} className="rc-stock-row">
-                  <div className="rc-stock-info">
-                    <div className="rc-stock-label">{li.description}</div>
-                    <div className="rc-stock-unit">
-                      {li.qty ? `${li.qty} × ` : ""}{money(li.unitPrice)}
-                    </div>
-                  </div>
-                  <div className="rc-qty-value">{money(li.amount)}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        <button onClick={saveDraft} className="rc-submit-btn rc-submit-active">
-          <CheckCircle2 size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-          {afterSave ? "Save and next" : "Save invoice"}
-        </button>
-      </div>
+      <InvoiceReviewForm
+        draft={draft}
+        onField={(k, v) => setDraft((p) => ({ ...p, [k]: v }))}
+        onSave={saveDraft}
+        saving={saving}
+        onCancel={() => setDraft(null)}
+        top={err ? <div className="rc-urgent-note">{err}</div> : null}
+      />
     );
   }
 
@@ -569,46 +406,26 @@ export default function InvoiceScanner({ onBack }) {
         </div>
       </div>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        onChange={pick}
-        style={{ display: "none" }}
-      />
+      <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
 
-      <button
-        onClick={() => setScanning(true)}
-        disabled={busy}
-        className="rc-scan-btn"
-      >
+      <button onClick={() => setScanning(true)} disabled={busy} className="rc-scan-btn">
         {busy ? <Loader2 size={20} className="rc-spin" /> : <Camera size={20} />}
         <span>{busy ? "Reading invoice…" : "Scan an invoice"}</span>
       </button>
 
-      <button
-        onClick={() => setInbox(true)}
-        disabled={busy}
-        className="rc-history-toggle"
-      >
+      <button onClick={() => setInbox(true)} disabled={busy} className="rc-history-toggle">
         <Inbox size={15} color="var(--text-2)" />
         <span>Invoices sent by email</span>
         <ChevronRight size={16} color="var(--text-3)" />
       </button>
 
-      <button
-        onClick={() => fileRef.current?.click()}
-        disabled={busy}
-        className="rc-history-toggle"
-      >
+      <button onClick={() => fileRef.current?.click()} disabled={busy} className="rc-history-toggle">
         <ImageIcon size={15} color="var(--text-2)" />
         <span>Choose from photos instead</span>
       </button>
 
       {err && (
-        <div className="rc-urgent-note" style={{ marginTop: 14, wordBreak: "break-word" }}>
-          {err}
-        </div>
+        <div className="rc-urgent-note" style={{ marginTop: 14, wordBreak: "break-word" }}>{err}</div>
       )}
 
       {invoices.length > 0 && (
@@ -623,12 +440,8 @@ export default function InvoiceScanner({ onBack }) {
             </button>
             <button
               onClick={() =>
-                emailExcel(
-                  invoices,
-                  `rooster-invoices-all-${stamp}.xlsx`,
-                  "all",
-                  `Rooster & Co — all invoices (${invoices.length})`
-                )
+                emailExcel(invoices, `rooster-invoices-all-${stamp}.xlsx`, "all",
+                  `Rooster & Co — all invoices (${invoices.length})`)
               }
               disabled={sendingId === "xls-all"}
               className="rc-export-btn rc-export-mail"
@@ -650,12 +463,8 @@ export default function InvoiceScanner({ onBack }) {
               </button>
               <button
                 onClick={() =>
-                  emailPdfDirect(
-                    invoices,
-                    `rooster-invoices-all-${stamp}.pdf`,
-                    "all",
-                    "Rooster & Co — all scanned invoices"
-                  )
+                  emailPdfDirect(invoices, `rooster-invoices-all-${stamp}.pdf`, "all",
+                    "Rooster & Co — all scanned invoices")
                 }
                 disabled={Boolean(building) || sendingId === "pdf-all"}
                 className="rc-pdf-btn rc-export-mail"
@@ -674,10 +483,7 @@ export default function InvoiceScanner({ onBack }) {
         const weekScans = rows.filter((i) => i.hasScan).length;
         return (
           <div key={key} className="rc-week-block">
-            <button
-              onClick={() => setOpenWeek(open ? null : key)}
-              className="rc-week-head"
-            >
+            <button onClick={() => setOpenWeek(open ? null : key)} className="rc-week-head">
               <div className="rc-stock-info">
                 <div className="rc-stock-label">{weekLabel(key)}</div>
                 <div className="rc-stock-unit">
@@ -704,7 +510,6 @@ export default function InvoiceScanner({ onBack }) {
                           {i.total != null ? ` · ${money(i.total)}` : ""}
                         </div>
                       </div>
-
                       {i.hasScan && (
                         <>
                           <button onClick={() => openScan(i)} className="rc-icon-btn" aria-label="View scan">
@@ -715,24 +520,19 @@ export default function InvoiceScanner({ onBack }) {
                             disabled={sendingId === i.id}
                             className="rc-icon-btn rc-icon-mail"
                             aria-label="Email to the usual address"
-                            title="Send to the usual address"
                           >
-                            {sendingId === i.id
-                              ? <Loader2 size={16} className="rc-spin" />
-                              : <Mail size={16} />}
+                            {sendingId === i.id ? <Loader2 size={16} className="rc-spin" /> : <Mail size={16} />}
                           </button>
                           <button
                             onClick={() => shareScan(i)}
                             disabled={sendingId === i.id}
                             className="rc-icon-btn rc-icon-mail-alt"
                             aria-label="Share to another address"
-                            title="Share — pick Gmail and type the address"
                           >
                             <MailPlus size={16} />
                           </button>
                         </>
                       )}
-
                       <button onClick={() => remove(i.id)} className="rc-icon-btn" aria-label="Delete">
                         <X size={16} />
                       </button>
@@ -750,12 +550,8 @@ export default function InvoiceScanner({ onBack }) {
                   </button>
                   <button
                     onClick={() =>
-                      emailExcel(
-                        rows,
-                        `rooster-invoices-week-${key}.xlsx`,
-                        key,
-                        `Rooster & Co invoices — ${weekLabel(key)}`
-                      )
+                      emailExcel(rows, `rooster-invoices-week-${key}.xlsx`, key,
+                        `Rooster & Co invoices — ${weekLabel(key)}`)
                     }
                     disabled={sendingId === `xls-${key}`}
                     className="rc-export-btn rc-export-mail"
@@ -778,12 +574,8 @@ export default function InvoiceScanner({ onBack }) {
                       </button>
                       <button
                         onClick={() =>
-                          emailPdfDirect(
-                            rows,
-                            `rooster-invoices-${key}.pdf`,
-                            key,
-                            `Rooster & Co scans — ${weekLabel(key)}`
-                          )
+                          emailPdfDirect(rows, `rooster-invoices-${key}.pdf`, key,
+                            `Rooster & Co scans — ${weekLabel(key)}`)
                         }
                         disabled={Boolean(building) || sendingId === `pdf-${key}`}
                         className="rc-pdf-btn rc-export-mail"
@@ -792,7 +584,6 @@ export default function InvoiceScanner({ onBack }) {
                         <span>Email</span>
                       </button>
                     </div>
-
                     <button
                       onClick={() => sharePdf(rows, `rooster-invoices-${key}.pdf`, key)}
                       disabled={Boolean(building)}
@@ -811,9 +602,7 @@ export default function InvoiceScanner({ onBack }) {
 
       {invoices.length === 0 && !busy && (
         <div className="rc-namegate" style={{ minHeight: 200 }}>
-          <div className="rc-namegate-sub">
-            No invoices yet. Scan one, or check the email inbox.
-          </div>
+          <div className="rc-namegate-sub">No invoices yet. Scan one, or check the email inbox.</div>
         </div>
       )}
 
@@ -825,7 +614,6 @@ export default function InvoiceScanner({ onBack }) {
 
       {toast && <div className="rc-toast">{toast}</div>}
 
-      {/* Scan viewer */}
       {viewing && (
         <div className="rc-scan-modal" onClick={() => setViewing(null)}>
           <div className="rc-scan-modal-inner" onClick={(e) => e.stopPropagation()}>
@@ -841,11 +629,9 @@ export default function InvoiceScanner({ onBack }) {
                 <X size={16} />
               </button>
             </div>
-
             <div className="rc-scan-modal-body">
               <img src={viewing.dataUrl} alt="Scanned invoice" />
             </div>
-
             <div style={{ padding: 14 }}>
               <button
                 onClick={() => emailScan(viewing.inv)}
@@ -855,15 +641,10 @@ export default function InvoiceScanner({ onBack }) {
                 <Send size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
                 {sendingId === viewing.id ? "Sending…" : "Email to the usual address"}
               </button>
-
-              <button
-                onClick={() => shareScan(viewing.inv)}
-                className="rc-icon-mail-alt-btn"
-              >
+              <button onClick={() => shareScan(viewing.inv)} className="rc-icon-mail-alt-btn">
                 <Share2 size={15} />
                 <span>Share — Gmail, WhatsApp, anywhere</span>
               </button>
-
               <a
                 href={viewing.dataUrl}
                 download={`invoice-${viewing.inv.invoiceNumber || viewing.id}.jpg`}
@@ -877,4 +658,4 @@ export default function InvoiceScanner({ onBack }) {
       )}
     </div>
   );
- }
+}

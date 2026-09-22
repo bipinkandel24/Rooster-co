@@ -1272,3 +1272,13 @@ select.rc-field-input { appearance: none; cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-card);
 }
+
+.rc-inbox-progress {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; font-weight: 600; color: var(--text);
+  margin-bottom: 8px;
+}
+.rc-inbox-ahead {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 500; color: var(--text-2);
+}
