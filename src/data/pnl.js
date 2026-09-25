@@ -1,21 +1,8 @@
 import { loadSessions, sessionValue } from "./stocktake";
 import { loadInvoices } from "./invoices";
 import { loadItems } from "./stockItems";
-import { SUPPLIERS } from "./suppliers";
 
 const KEY = "rc_pnl_weeks";
-
-// Purchase buckets shown on the P&L, in your sheet's order
-export const BUCKETS = [
-  { id: "cadell", label: "Cadell" },
-  { id: "turosi", label: "Turosi" },
-  { id: "biviano", label: "Biviano" },
-  { id: "oroso", label: "Oroso" },
-  { id: "mrpita", label: "Mr Pita" },
-  { id: "lotus", label: "Lotus" },
-  { id: "viva", label: "Viva" },
-  { id: "misc", label: "Misc" },
-];
 
 export function loadWeeks() {
   try {
@@ -117,39 +104,38 @@ export function stockForWeek(weekStartISO) {
   };
 }
 
-// Which P&L bucket does an invoice belong to?
-function bucketFor(supplierName) {
-  const n = String(supplierName || "").toLowerCase();
-  const direct = BUCKETS.find((b) => b.id !== "misc" && n.includes(b.label.toLowerCase()));
-  if (direct) return direct.id;
-
-  // Try the supplier list too — invoices often use trading names
-  const sup = SUPPLIERS.find((s) => n.includes(s.name.toLowerCase().split(" ")[0]));
-  if (sup && BUCKETS.some((b) => b.id === sup.id)) return sup.id;
-
-  return "misc";
-}
-
+// Group the week's invoices by supplier name as scanned — no fixed list,
+// so a one-off supplier appears as its own line rather than vanishing.
 export function purchasesForWeek(weekStartISO) {
   const { start, end } = weekBounds(weekStartISO);
   const invoices = loadInvoices();
 
-  const totals = {};
-  BUCKETS.forEach((b) => (totals[b.id] = 0));
-  const matched = [];
+  const byKey = {};
+  let undated = 0;
 
   invoices.forEach((inv) => {
-    const when = inv.invoiceDate ? new Date(inv.invoiceDate) : new Date(inv.savedAt);
-    if (Number.isNaN(when.getTime()) || when < start || when > end) return;
+    const when = inv.invoiceDate ? new Date(inv.invoiceDate) : null;
+    if (!when || Number.isNaN(when.getTime())) {
+      undated++;
+      return;
+    }
+    if (when < start || when > end) return;
+
     const amount = Number(inv.total);
     if (!Number.isFinite(amount)) return;
 
-    const b = bucketFor(inv.supplier);
-    totals[b] += amount;
-    matched.push({ ...inv, bucket: b });
+    const name = (inv.supplier || "Unknown supplier").trim();
+    const key = name.toLowerCase();
+
+    if (!byKey[key]) byKey[key] = { key, name, amount: 0, count: 0 };
+    byKey[key].amount += amount;
+    byKey[key].count += 1;
   });
 
-  return { totals, matched };
+  const lines = Object.values(byKey).sort((a, b) => b.amount - a.amount);
+  const total = lines.reduce((s, l) => s + l.amount, 0);
+
+  return { lines, total, undated };
 }
 
 // --- the maths ----------------------------------------------------------
@@ -163,7 +149,7 @@ export function calculate(week) {
   const sales = num(week.sales);
   const opening = num(week.opening);
   const closing = num(week.closing);
-  const purchases = BUCKETS.reduce((s, b) => s + num(week.purchases?.[b.id]), 0);
+  const purchases = (week.lines || []).reduce((s, l) => s + num(l.amount), 0);
   const labour = num(week.labour);
   const fixed = num(week.fixed);
 
@@ -208,7 +194,6 @@ export const pct1 = (n) => `${Number(n || 0).toFixed(1)}%`;
 export function health(calc) {
   return {
     cogs: calc.cogsPct === 0 ? "none" : calc.cogsPct <= 32 ? "good" : calc.cogsPct <= 38 ? "ok" : "bad",
-    labour: calc.labourPct === 0 ? "none" : null,
     prime: calc.primeCostPct === 0 ? "none" : calc.primeCostPct <= 60 ? "good" : calc.primeCostPct <= 68 ? "ok" : "bad",
   };
 }

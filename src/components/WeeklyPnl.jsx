@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from "react";
 import {
   TrendingUp, ChevronRight, ChevronLeft, Download, Trash2, RefreshCw,
-  AlertTriangle, Check, History,
+  Check, History, Plus, X,
 } from "lucide-react";
 import {
-  BUCKETS, loadWeeks, saveWeek, deleteWeek, mondayOf, weekLabel,
+  loadWeeks, saveWeek, deleteWeek, mondayOf, weekLabel,
   stockForWeek, purchasesForWeek, calculate, money, money2, pct1,
 } from "../data/pnl";
 
@@ -15,7 +15,7 @@ const blankWeek = (weekStart) => ({
   sales: "",
   opening: "",
   closing: "",
-  purchases: Object.fromEntries(BUCKETS.map((b) => [b.id, ""])),
+  lines: [],      // { id, name, amount, count, fromScan }
   labour: "",
   fixed: "",
 });
@@ -34,15 +34,39 @@ export default function WeeklyPnl({ onBack }) {
   const calc = useMemo(() => calculate(current), [current]);
   const labourPct = calc.sales > 0 ? (calc.labour / calc.sales) * 100 : 0;
 
-  const set = (k, v) => {
-    setCurrent((p) => ({ ...p, [k]: v }));
+  const touch = () => {
     setDirty(true);
     setSaved("");
   };
-  const setPurchase = (id, v) => {
-    setCurrent((p) => ({ ...p, purchases: { ...p.purchases, [id]: v } }));
-    setDirty(true);
-    setSaved("");
+
+  const set = (k, v) => {
+    setCurrent((p) => ({ ...p, [k]: v }));
+    touch();
+  };
+
+  // ---- purchase lines --------------------------------------------------
+  const setLine = (id, patch) => {
+    setCurrent((p) => ({
+      ...p,
+      lines: (p.lines || []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+    }));
+    touch();
+  };
+
+  const addLine = () => {
+    setCurrent((p) => ({
+      ...p,
+      lines: [
+        ...(p.lines || []),
+        { id: `m${Date.now()}`, name: "", amount: "", fromScan: false },
+      ],
+    }));
+    touch();
+  };
+
+  const removeLine = (id) => {
+    setCurrent((p) => ({ ...p, lines: (p.lines || []).filter((l) => l.id !== id) }));
+    touch();
   };
 
   const shiftWeek = (dir) => {
@@ -59,25 +83,45 @@ export default function WeeklyPnl({ onBack }) {
   // Pull stock + purchases straight from the app's own records
   const autofill = () => {
     const stock = stockForWeek(current.weekStart);
-    const { totals, matched } = purchasesForWeek(current.weekStart);
+    const { lines, total, undated } = purchasesForWeek(current.weekStart);
 
-    setCurrent((p) => ({
-      ...p,
-      opening: stock.opening != null ? stock.opening.toFixed(2) : p.opening,
-      closing: stock.closing != null ? stock.closing.toFixed(2) : p.closing,
-      purchases: Object.fromEntries(
-        BUCKETS.map((b) => [b.id, totals[b.id] ? totals[b.id].toFixed(2) : p.purchases[b.id]])
-      ),
-    }));
-    setDirty(true);
-    setSaved("");
+    setCurrent((p) => {
+      // Keep anything typed by hand, replace the scanned lines
+      const manual = (p.lines || []).filter((l) => !l.fromScan);
+      const scanned = lines.map((l) => ({
+        id: `s-${l.key}`,
+        name: l.name,
+        amount: l.amount.toFixed(2),
+        count: l.count,
+        fromScan: true,
+      }));
+      return {
+        ...p,
+        opening: stock.opening != null ? stock.opening.toFixed(2) : p.opening,
+        closing: stock.closing != null ? stock.closing.toFixed(2) : p.closing,
+        lines: [...scanned, ...manual],
+      };
+    });
+    touch();
 
     const bits = [];
     if (stock.opening != null) bits.push("opening stock");
     if (stock.closing != null) bits.push("closing stock");
-    if (matched.length) bits.push(`${matched.length} invoice${matched.length === 1 ? "" : "s"}`);
-    setPulled(bits.length ? `Filled in ${bits.join(", ")}.` : "Nothing found for this week.");
-    setTimeout(() => setPulled(""), 6000);
+    if (lines.length) {
+      bits.push(`${lines.length} supplier${lines.length === 1 ? "" : "s"} · ${money(total)}`);
+    }
+    setPulled(
+      bits.length
+        ? `Filled in ${bits.join(", ")}.${
+            undated
+              ? ` ${undated} invoice${undated === 1 ? " has" : "s have"} no date and ${
+                  undated === 1 ? "was" : "were"
+                } skipped.`
+              : ""
+          }`
+        : "Nothing found for this week."
+    );
+    setTimeout(() => setPulled(""), 8000);
   };
 
   const save = () => {
@@ -106,7 +150,10 @@ export default function WeeklyPnl({ onBack }) {
       ["", ""],
       ["COST OF GOODS SOLD (COGS)", ""],
       ["Opening Stock", c.opening],
-      ...BUCKETS.map((b) => [`Purchases – ${b.label}`, Number(current.purchases[b.id]) || 0]),
+      ...(current.lines || []).map((l) => [
+        `Purchases – ${l.name || "Unnamed"}`,
+        Number(l.amount) || 0,
+      ]),
       ["Total Purchases", c.purchases],
       ["Closing Stock", c.closing],
       ["WEEKLY COGS", c.cogs],
@@ -309,21 +356,67 @@ export default function WeeklyPnl({ onBack }) {
         </div>
       </div>
 
+      {/* Purchases — built from the week's scanned invoices */}
+      <div className="rc-checklist-heading" style={{ marginTop: 6 }}>
+        Purchases
+        {current.lines?.length > 0 && (
+          <span className="rc-checklist-count">{current.lines.length}</span>
+        )}
+      </div>
+
+      {(!current.lines || current.lines.length === 0) && (
+        <div className="rc-stock-unit" style={{ marginBottom: 12 }}>
+          Empty — tap Pull above to fill this from the week's scanned invoices,
+          or add a supplier by hand.
+        </div>
+      )}
+
       <div className="rc-stock-list">
-        {BUCKETS.map((b) => (
-          <div key={b.id} className="rc-stock-row">
+        {(current.lines || []).map((l) => (
+          <div key={l.id} className="rc-stock-row">
             <div className="rc-stock-info">
-              <div className="rc-stock-label">{b.label}</div>
+              {l.fromScan ? (
+                <>
+                  <div className="rc-stock-label">{l.name}</div>
+                  <div className="rc-stock-unit">
+                    {l.count} invoice{l.count === 1 ? "" : "s"} scanned
+                  </div>
+                </>
+              ) : (
+                <input
+                  className="rc-field-input"
+                  style={{ padding: "8px 10px", fontSize: 13.5 }}
+                  placeholder="Supplier name"
+                  value={l.name}
+                  onChange={(e) => setLine(l.id, { name: e.target.value })}
+                />
+              )}
             </div>
             <input
-              className="rc-temp-input" style={{ width: 96 }}
+              className="rc-temp-input"
+              style={{ width: 92 }}
               type="number" step="0.01" inputMode="decimal"
               placeholder="0"
-              value={current.purchases[b.id] ?? ""}
-              onChange={(e) => setPurchase(b.id, e.target.value)}
+              value={l.amount}
+              onChange={(e) => setLine(l.id, { amount: e.target.value })}
             />
+            <button onClick={() => removeLine(l.id)} className="rc-icon-btn" aria-label="Remove">
+              <X size={15} />
+            </button>
           </div>
         ))}
+      </div>
+
+      <button onClick={addLine} className="rc-history-toggle">
+        <Plus size={15} color="var(--text-2)" />
+        <span>Add a supplier by hand</span>
+      </button>
+
+      <div className="rc-stock-row" style={{ marginTop: 10, marginBottom: 12 }}>
+        <div className="rc-stock-info">
+          <div className="rc-stock-label">Total purchases</div>
+        </div>
+        <div className="rc-qty-value">{money(calc.purchases)}</div>
       </div>
 
       <div className={`rc-stock-row ${tone(calc.cogsPct, 32, 38)}`} style={{ marginBottom: 18 }}>
