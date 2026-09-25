@@ -30,7 +30,7 @@ Rules:
 - The totals matter most. Always fill subtotal, gst and total before spending effort on line items.`;
 
 // Tried in order — if the first isn't available on this key, the next is used.
-const MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.0-flash"];
+const MODELS = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.6-flash"];
 
 async function callGemini(model, key, image, mediaType) {
   const r = await fetch(
